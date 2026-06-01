@@ -9,6 +9,7 @@ from market.models import Order, OrderSide, Trade
 
 if TYPE_CHECKING:
     from agents.base import Agent
+    from market.metrics import RunMetrics
 
 console = Console()
 
@@ -115,3 +116,51 @@ class ThoughtLogger:
             )
 
         console.print(table)
+
+    def log_scenario_event(self, tick: int, description: str):
+        console.print(
+            f"\n[bold yellow][SCENARIO tick {tick}][/bold yellow] "
+            f"[yellow]{description}[/yellow]"
+        )
+
+    def log_metrics_summary(self, metrics: RunMetrics):
+        console.print()
+        console.print(Rule("[bold cyan]Run Metrics[/bold cyan]", style="cyan"))
+
+        # Price table
+        price_table = Table(box=box.SIMPLE_HEAVY, border_style="dim", show_header=True)
+        price_table.add_column("Metric",   style="bold white")
+        price_table.add_column("Value",    justify="right", style="cyan")
+
+        pct_move = f"{metrics.price_change_pct:+.1%}"
+        color    = "green" if metrics.price_change_pct >= 0 else "red"
+        price_table.add_row("Price start",    f"${metrics.price_start:.2f}")
+        price_table.add_row("Price end",      f"[{color}]${metrics.price_end:.2f} ({pct_move})[/{color}]")
+        price_table.add_row("Price range",    f"${metrics.price_min:.2f} - ${metrics.price_max:.2f}")
+        price_table.add_row("Volatility",     f"${metrics.volatility:.3f}")
+        price_table.add_row("Max drawdown",   f"{metrics.max_drawdown_pct:.1%}")
+        price_table.add_row("Ticks / trades", f"{metrics.total_ticks} / {metrics.ticks_with_trades} active")
+        price_table.add_row("Total volume",   f"{metrics.total_volume} units ({metrics.total_trades} trades)")
+        price_table.add_row("Gini (start)",   f"{metrics.gini_start:.3f}")
+        price_table.add_row("Gini (end)",     f"{metrics.gini_end:.3f}")
+        console.print(price_table)
+
+        # Per-agent PnL
+        agent_table = Table(box=box.SIMPLE_HEAVY, border_style="dim", show_header=True,
+                            title="Agent PnL")
+        agent_table.add_column("Agent",      style="bold white")
+        agent_table.add_column("Start NW",   justify="right")
+        agent_table.add_column("End NW",     justify="right")
+        agent_table.add_column("PnL",        justify="right")
+        agent_table.add_column("Trades",     justify="right", style="dim")
+
+        for a in sorted(metrics.agents, key=lambda x: x.pnl, reverse=True):
+            pnl_color = "green" if a.pnl >= 0 else "red"
+            agent_table.add_row(
+                a.agent_id,
+                f"${a.net_worth_start:.2f}",
+                f"${a.net_worth_end:.2f}",
+                f"[{pnl_color}]{a.pnl:+.2f} ({a.pnl_pct:+.1%})[/{pnl_color}]",
+                str(a.trade_count),
+            )
+        console.print(agent_table)
