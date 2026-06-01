@@ -21,11 +21,12 @@ class Agent(ABC):
         ...
 
     def on_trade(self, trade: Trade):
-        self.trade_count += 1
         if trade.buyer_id == self.agent_id:
+            self.trade_count += 1
             self.inventory += trade.quantity
             self.cash -= trade.price * trade.quantity
         elif trade.seller_id == self.agent_id:
+            self.trade_count += 1
             self.inventory -= trade.quantity
             self.cash += trade.price * trade.quantity
 
