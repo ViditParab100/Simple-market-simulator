@@ -10,6 +10,8 @@ from agents.panic import PanicAgent
 from agents.rational import RationalAgent
 from agents.hybrid.roster import build_roster
 from market.haggle import HaggleCoordinator
+from market.events import EventBus, EventType
+from market.consumers import AuditConsumer, AnomalyDetector
 from logger.thought_logger import ThoughtLogger
 
 # Seed price history: mild uptrend so momentum/fair-value agents activate from tick 1
@@ -53,6 +55,10 @@ def main():
                         help="Hide per-agent thought logs")
     parser.add_argument("--haggle", action="store_true",
                         help="Enable pre-tick bilateral haggling phase")
+    parser.add_argument("--events", action="store_true",
+                        help="Enable event pipeline with anomaly detection")
+    parser.add_argument("--audit",  type=str, default=None, metavar="PATH",
+                        help="Write JSONL audit trail to PATH (requires --events)")
     args = parser.parse_args()
 
     if args.sim == "hybrid":
@@ -65,14 +71,37 @@ def main():
         agents       = build_random_agents(args.agents, args.seed)
         seed_history = None
 
-    logger     = ThoughtLogger(verbose=not args.quiet)
+    logger      = ThoughtLogger(verbose=not args.quiet)
     coordinator = HaggleCoordinator(max_rounds=3) if args.haggle else None
-    engine     = SimulationEngine(
+
+    # Event pipeline
+    bus      = None
+    audit    = None
+    detector = None
+    if args.events:
+        bus      = EventBus()
+        audit    = AuditConsumer(bus)
+        detector = AnomalyDetector(bus)
+        # Print anomalies inline as they are detected
+        bus.subscribe(EventType.ANOMALY,
+                      lambda e: logger.log_anomaly(e.metadata.get("description", ""), e.tick))
+
+    engine = SimulationEngine(
         agents=agents, logger=logger,
         initial_price_history=seed_history,
         haggle_coordinator=coordinator,
+        event_bus=bus,
     )
     engine.run(ticks=args.ticks)
+
+    # Post-run: write audit trail
+    if audit and args.audit:
+        audit.export_jsonl(args.audit)
+        print(f"\nAudit trail written to {args.audit} ({len(audit.events)} events)")
+
+    # Post-run: anomaly summary
+    if detector and detector.anomalies:
+        print(f"\n{len(detector.anomalies)} anomaly/anomalies detected during this run.")
 
 
 if __name__ == "__main__":

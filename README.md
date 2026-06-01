@@ -43,21 +43,26 @@ Two simulations are available:
 - [x] 42 behavioral tests — each agent verified against purpose-built market states
 - [x] `--sim zoo` CLI mode
 
-### Phase 3 — Haggling / Negotiation Protocol
-- [ ] Agents negotiate bilaterally before hitting the order book
-- [ ] Bid/ask thresholds adjust dynamically:
-  - Inventory level (low stock → raise ask; high stock → lower ask)
-  - Demand surge signals (competing bids push threshold up)
-  - Scarcity index (market-wide supply/demand ratio)
-- [ ] Negotiation rounds with counter-offer logic
-- [ ] Haggling thought-process log per negotiation session
+### Phase 3 — Haggling / Negotiation Protocol ✅
+- [x] `HaggleIntent` — direction + ideal price + worst-acceptable price + quantity
+- [x] `HaggleSession` — N-round concession negotiation; both parties step toward their limit each round
+- [x] `HaggleCoordinator` — pairs compatible buyers/sellers (deal zone must exist), one session per agent per tick; shuffled to prevent always-same pairings
+- [x] Per-archetype `haggle_intent()` overrides — Hoarder lowballs, Panic dumps at threshold, Rational anchors to fair value, Speculator chases momentum, MarketMaker negotiates only when inventory-imbalanced
+- [x] `HybridNPC.haggle_intent()` — delegates to winning archetype's intent
+- [x] Engine pre-tick phase — bilateral trades settle and state rebuilds before the regular order book runs
+- [x] Haggling thought-process log printed per session (who bid what, round-by-round)
+- [x] `--haggle` CLI flag to enable bilateral negotiation
+- [x] 42 tests covering `HaggleSession`, `HaggleCoordinator`, and all per-agent overrides
 
-### Phase 4 — Kafka Event Pipeline
-- [ ] Kafka producer: emit events for every trade, threshold adjustment, and agent state change
-- [ ] Event schema: `{ event_type, agent_id, price, quantity, inventory_post, timestamp }`
-- [ ] Kafka consumer: settlement audit trail
-- [ ] Anomaly detection consumer: flags hoarding patterns and sell-off cascades
-- [ ] Dashboard or log output showing systemic risk signals in real time
+### Phase 4 — Event Pipeline ✅
+- [x] `EventType` enum + `MarketEvent` dataclass — typed schema covering trades, tick summaries, and anomalies
+- [x] `EventBus` — in-process publish/subscribe bus; consumers register by event type
+- [x] `AuditConsumer` — stores full event history; exports to JSONL audit file
+- [x] `AnomalyDetector` consumer — flags: panic cascades, hoarding concentration, liquidity drain, price crash/spike, sell-off storms
+- [x] Engine integration — emits `TRADE`, `HAGGLE_TRADE`, and `TICK_SUMMARY` events automatically
+- [x] `--events` CLI flag; anomalies print as inline warnings during the run
+- [x] `--audit <path>` flag to write the full JSONL audit trail to disk
+- [x] 40+ tests for event schema, bus routing, audit consumer, and anomaly detection logic
 
 ### Phase 5 — Stress Testing & Scenarios
 - [ ] Scenario runner: inject supply shocks, demand surges, and agent collapses
@@ -213,6 +218,9 @@ Simple-market-simulator/
 |   +-- models.py                  # Order, Trade, MarketState dataclasses
 |   +-- order_book.py              # Bid/ask matching, price discovery
 |   +-- engine.py                  # Tick loop, settlement, price history
+|   +-- haggle.py                  # HaggleIntent, HaggleSession, HaggleCoordinator
+|   +-- events.py                  # EventType, MarketEvent, EventBus
+|   +-- consumers.py               # AuditConsumer, AnomalyDetector
 |
 +-- agents/
 |   +-- base.py                    # Abstract Agent, on_trade(), net_worth()
@@ -239,6 +247,8 @@ Simple-market-simulator/
     +-- test_random_agent.py
     +-- test_engine.py
     +-- test_agents_zoo.py         # 42 behavioral tests for Sim 1 archetypes
+    +-- test_haggle.py             # 42 tests for Phase 3 haggling protocol
+    +-- test_events.py             # 40+ tests for Phase 4 event pipeline
     +-- test_hybrid/               # Sim 2 tests (activation, mood, NPC behavior)
 ```
 
@@ -256,8 +266,17 @@ python main.py
 # Run Simulation 1 — Agent Zoo (5 archetypes)
 python main.py --sim zoo --ticks 30
 
-# Run Simulation 2 — Hybrid NPCs (coming next)
+# Run Simulation 2 — Hybrid NPCs
 python main.py --sim hybrid --ticks 30
+
+# Enable pre-market bilateral haggling
+python main.py --sim zoo --ticks 20 --haggle
+
+# Enable event pipeline + print anomaly warnings
+python main.py --sim zoo --ticks 50 --events
+
+# Write full JSONL audit trail to disk
+python main.py --sim hybrid --ticks 100 --events --audit audit.jsonl
 
 # Run quietly (hide thought logs, show summary only)
 python main.py --sim zoo --ticks 50 --quiet
