@@ -84,14 +84,16 @@ Two simulations are available:
 
 | Panel | What it shows |
 |---|---|
-| **Controls** (left) | Sim mode / scenario / speed dropdowns; START / STEP / PAUSE / RESET buttons; live tick counter, price, bid, ask |
-| **Agent Thoughts** (centre) | Scrollable, colour-coded reasoning log — every agent's full `think()` output each tick, BID/ASK orders highlighted |
+| **Controls** (left) | Sim mode / scenario / speed dropdowns; START / STEP / PAUSE / RESET buttons; live speed, tick counter, price, bid, ask |
+| **Agent Thoughts** (centre) | Scrollable, colour-coded reasoning log — every agent's full `think()` output, revealed one agent at a time at the chosen speed, BID/ASK orders highlighted |
 | **Market State** (right) | Live price + depth readout, price sparkline (last 40 ticks), agent table with live inventory / cash / net-worth / trade count |
 | **Console Log** (bottom) | Trades, haggle deal round-by-round, anomaly alerts in red, scenario injections in yellow |
 
 - [x] Engine refactored to `prepare()` / `step()` / `finalize()` — GUI controls exact tick pace; CLI `run()` is unchanged
-- [x] Worker thread runs simulation at chosen speed (Slow 1.5 s / Normal 0.5 s / Fast 0.1 s / Instant); `call_from_thread` keeps UI responsive
-- [x] Keyboard shortcuts: `Space` start/pause, `S` step one tick, `R` reset, `Q` quit
+- [x] Semaphore-driven worker thread: STEP releases one tick; START runs ticks back-to-back; all engine work stays off the UI thread so `call_from_thread` callbacks always succeed
+- [x] **Per-thought pacing** — the delay applies *after each agent's reasoning*, so thoughts appear one agent at a time instead of dumping the whole tick at once
+- [x] **Five speed tiers** (Very Slow 1.2 s → Slow 0.6 s → Normal 0.25 s → Fast 0.08 s → Instant), adjustable **live** via the dropdown or the `+` / `-` keys; current speed shown in the control panel
+- [x] Keyboard shortcuts: `Space` start/pause, `S` step one tick, `R` reset, `+`/`-` faster/slower, `Q` quit (all priority bindings, so they work regardless of widget focus)
 - [x] `--gui` CLI flag launches the TUI; all other flags (`--sim`, `--ticks`, `--haggle`, `--scenario`) carry over
 
 ---
@@ -303,7 +305,12 @@ Simple-market-simulator/
 ## Getting Started
 
 ```bash
-# Install dependencies
+# (Recommended) create and activate a virtual environment
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS / Linux
+
+# Install dependencies (rich, pytest, textual)
 pip install -r requirements.txt
 
 # Run the random baseline (4 agents, 20 ticks)
@@ -343,6 +350,9 @@ python main.py --gui --sim hybrid --ticks 30 --scenario speculator_bubble --hagg
 python -m pytest tests/ -v
 ```
 
+> **Tip:** In the GUI, press `Space` to run, then tap `-` a few times to slow it down
+> and watch each agent reason in turn. Speed adjusts live — no need to pause or restart.
+
 ---
 
 ## CLI Reference
@@ -358,6 +368,7 @@ python -m pytest tests/ -v
 | `--events` | flag | Enable event pipeline + inline anomaly detection |
 | `--audit` | file path | Write JSONL audit trail to disk (requires `--events`) |
 | `--metrics` | flag | Show run metrics summary + per-agent PnL at end |
+| `--scenario` | `hoarding_crash` `panic_cascade` `speculator_bubble` | Inject a named stress-test scenario |
 | `--gui` | flag | Launch the interactive Textual TUI instead of CLI output |
 
 ### GUI keyboard shortcuts
@@ -367,8 +378,11 @@ python -m pytest tests/ -v
 | `Space` | Start / Pause |
 | `S` | Step one tick |
 | `R` | Reset simulation |
+| `+` | Speed up one tier |
+| `-` | Slow down one tier |
 | `Q` | Quit |
-| `--scenario` | `hoarding_crash` `panic_cascade` `speculator_bubble` | Inject a named stress-test scenario |
+
+Speed can also be changed live from the dropdown in the control panel. The five tiers (Very Slow → Slow → Normal → Fast → Instant) set how long each agent's reasoning lingers before the next agent thinks.
 
 ---
 
