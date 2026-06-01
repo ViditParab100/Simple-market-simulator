@@ -6,13 +6,21 @@ from logger.thought_logger import ThoughtLogger
 
 
 class SimulationEngine:
-    def __init__(self, agents: list[Agent], logger: ThoughtLogger):
+    def __init__(
+        self,
+        agents: list[Agent],
+        logger: ThoughtLogger,
+        initial_price_history: list[float] | None = None,
+    ):
         self.agents = agents
         self.order_book = OrderBook()
         self.logger = logger
         self.tick = 0
-        self.price_history: list[float] = []
+        self.price_history: list[float] = list(initial_price_history or [])
         self._agent_map: dict[str, Agent] = {a.agent_id: a for a in agents}
+
+        if self.price_history:
+            self.order_book.last_price = self.price_history[-1]
 
     def _build_market_state(self) -> MarketState:
         return MarketState(
