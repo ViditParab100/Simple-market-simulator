@@ -78,6 +78,22 @@ Two simulations are available:
 - [x] Scenario events logged in yellow inline; anomalies logged in red inline
 - [x] 59 tests (29 metrics + 30 scenarios) — all 335 tests passing
 
+### Phase 6 — Interactive GUI ✅
+- [x] `GUILogger` — drop-in for `ThoughtLogger`; fires callbacks instead of printing so any UI can subscribe
+- [x] `SimulatorApp` — full Textual TUI (runs in-terminal, no browser needed) with four panels:
+
+| Panel | What it shows |
+|---|---|
+| **Controls** (left) | Sim mode / scenario / speed dropdowns; START / STEP / PAUSE / RESET buttons; live tick counter, price, bid, ask |
+| **Agent Thoughts** (centre) | Scrollable, colour-coded reasoning log — every agent's full `think()` output each tick, BID/ASK orders highlighted |
+| **Market State** (right) | Live price + depth readout, price sparkline (last 40 ticks), agent table with live inventory / cash / net-worth / trade count |
+| **Console Log** (bottom) | Trades, haggle deal round-by-round, anomaly alerts in red, scenario injections in yellow |
+
+- [x] Engine refactored to `prepare()` / `step()` / `finalize()` — GUI controls exact tick pace; CLI `run()` is unchanged
+- [x] Worker thread runs simulation at chosen speed (Slow 1.5 s / Normal 0.5 s / Fast 0.1 s / Instant); `call_from_thread` keeps UI responsive
+- [x] Keyboard shortcuts: `Space` start/pause, `S` step one tick, `R` reset, `Q` quit
+- [x] `--gui` CLI flag launches the TUI; all other flags (`--sim`, `--ticks`, `--haggle`, `--scenario`) carry over
+
 ---
 
 ## Simulation 2 — Hybrid NPC Market
@@ -260,6 +276,10 @@ Simple-market-simulator/
 |   +-- thought_logger.py          # Rich output: thoughts, trades, haggle, anomalies,
 |                                  #              scenarios, metrics tables
 |
++-- gui/
+|   +-- app.py                     # Textual TUI: SimulatorApp (4-panel layout + worker)
+|   +-- logger.py                  # GUILogger: callback-based bridge to UI widgets
+|
 +-- tests/
     +-- test_models.py             # MarketState properties, dataclass fields
     +-- test_order_book.py         # Matching, priority, self-trade, depth
@@ -309,8 +329,15 @@ python main.py --sim zoo --ticks 25 --scenario panic_cascade --events --metrics 
 python main.py --sim zoo --ticks 25 --scenario hoarding_crash --metrics --quiet
 python main.py --sim zoo --ticks 20 --scenario speculator_bubble --metrics --quiet
 
-# Full kitchen-sink run
+# Full kitchen-sink run (CLI)
 python main.py --sim hybrid --ticks 30 --haggle --events --metrics --scenario panic_cascade
+
+# Launch the interactive GUI (Textual TUI)
+python main.py --gui
+python main.py --gui --sim zoo --ticks 30
+python main.py --gui --sim hybrid --ticks 20 --haggle
+python main.py --gui --sim zoo --ticks 25 --scenario panic_cascade
+python main.py --gui --sim hybrid --ticks 30 --scenario speculator_bubble --haggle
 
 # Run all 335 tests
 python -m pytest tests/ -v
@@ -331,6 +358,16 @@ python -m pytest tests/ -v
 | `--events` | flag | Enable event pipeline + inline anomaly detection |
 | `--audit` | file path | Write JSONL audit trail to disk (requires `--events`) |
 | `--metrics` | flag | Show run metrics summary + per-agent PnL at end |
+| `--gui` | flag | Launch the interactive Textual TUI instead of CLI output |
+
+### GUI keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Space` | Start / Pause |
+| `S` | Step one tick |
+| `R` | Reset simulation |
+| `Q` | Quit |
 | `--scenario` | `hoarding_crash` `panic_cascade` `speculator_bubble` | Inject a named stress-test scenario |
 
 ---
@@ -341,5 +378,6 @@ python -m pytest tests/ -v
 |---|---|
 | Simulation core | Python 3.11+ |
 | Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
-| Thought-process output | `rich` (terminal panels, tables, color) |
+| CLI output | `rich` (terminal panels, tables, colour) |
+| Interactive GUI | `textual` (Textual TUI — 4-panel live layout, worker thread) |
 | Testing | `pytest` — 335 tests across 14 files |

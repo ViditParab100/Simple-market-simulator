@@ -15,6 +15,7 @@ import random
 from typing import Optional
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.widgets import (
     Button, DataTable, Footer, Header,
@@ -46,7 +47,6 @@ from gui.logger import GUILogger
 _SEED_HISTORY = [round(19.0 + i * 0.25, 2) for i in range(10)]
 
 _SPEED_OPTIONS = [
-    Select.BLANK,
     ("Slow   (1.5 s/tick)",  "slow"),
     ("Normal (0.5 s/tick)",  "normal"),
     ("Fast   (0.1 s/tick)",  "fast"),
@@ -55,18 +55,16 @@ _SPEED_OPTIONS = [
 _SPEED_DELAY = {"slow": 1.5, "normal": 0.5, "fast": 0.1, "instant": 0.0}
 
 _SIM_OPTIONS = [
-    Select.BLANK,
     ("Agent Zoo (5 archetypes)", "zoo"),
     ("Hybrid NPCs (5 NPCs)",     "hybrid"),
     ("Random agents",            "random"),
 ]
 
 _SCENARIO_OPTIONS = [
-    Select.BLANK,
-    ("None",                  "none"),
-    ("Panic Cascade",         "panic_cascade"),
-    ("Hoarding Crash",        "hoarding_crash"),
-    ("Speculator Bubble",     "speculator_bubble"),
+    ("None",                 "none"),
+    ("Panic Cascade",        "panic_cascade"),
+    ("Hoarding Crash",       "hoarding_crash"),
+    ("Speculator Bubble",    "speculator_bubble"),
 ]
 
 
@@ -194,10 +192,10 @@ class SimulatorApp(App):
     CSS = CSS
     TITLE = "Simple Market Simulator"
     BINDINGS = [
-        ("space", "toggle_run",  "Start / Pause"),
-        ("s",     "step_once",   "Step"),
-        ("r",     "reset",       "Reset"),
-        ("q",     "quit",        "Quit"),
+        Binding("space", "toggle_run", "Start / Pause", priority=True),
+        Binding("s",     "step_once",  "Step",          priority=True),
+        Binding("r",     "reset",      "Reset",         priority=True),
+        Binding("q",     "quit",       "Quit",          priority=True),
     ]
 
     # Reactive state
@@ -216,11 +214,17 @@ class SimulatorApp(App):
         self._speed     = speed
         self._haggle    = haggle
 
-        # Simulation control
-        self._engine:  Optional[SimulationEngine] = None
-        self._logger   = GUILogger()
-        self._run_flag = threading.Event()   # set = running, clear = paused
-        self._stop_flag= threading.Event()   # set = stop worker
+        # Engine + GUI bridge
+        self._engine:    Optional[SimulationEngine] = None
+        self._gui_logger = GUILogger()
+
+        # Semaphore-based run control — engine ALWAYS runs in worker thread
+        # so call_from_thread() inside logger callbacks always works.
+        self._step_sem      = threading.Semaphore(0)  # one permit = one tick
+        self._stop_flag     = threading.Event()        # set = kill worker
+        self._continuous    = threading.Event()        # set = keep releasing permits
+        self._worker_live   = False                    # True once worker is started
+        self._ui_ready         = False                    # True once on_mount completes
 
         # Price history for sparkline
         self._prices: list[float] = list(_SEED_HISTORY)
@@ -238,9 +242,9 @@ class SimulatorApp(App):
             # Left: controls
             with Vertical(id="controls"):
                 yield Label("Simulation", classes="section-title")
-                yield Select(_SIM_OPTIONS,      id="sel-sim",      prompt="Sim mode")
-                yield Select(_SCENARIO_OPTIONS, id="sel-scenario",  prompt="Scenario")
-                yield Select(_SPEED_OPTIONS,    id="sel-speed",     prompt="Speed")
+                yield Select(_SIM_OPTIONS,      id="sel-sim",      value=self._sim_mode)
+                yield Select(_SCENARIO_OPTIONS, id="sel-scenario",  value=self._scenario or "none")
+                yield Select(_SPEED_OPTIONS,    id="sel-speed",     value=self._speed)
 
                 yield Label("", id="lbl-sep")
                 yield Button("START",  id="btn-start",  variant="success")
@@ -281,11 +285,6 @@ class SimulatorApp(App):
     # ── Mount ─────────────────────────────────────────────────────────────────
 
     def on_mount(self):
-        # Pre-populate selects with defaults
-        self.query_one("#sel-sim",      Select).value = self._sim_mode
-        self.query_one("#sel-scenario", Select).value = self._scenario if self._scenario else "none"
-        self.query_one("#sel-speed",    Select).value = self._speed
-
         # Build agent table columns
         table = self.query_one("#agent-table", DataTable)
         table.add_columns("Agent", "Inv", "Cash", "Net Worth", "Trades")
@@ -299,11 +298,12 @@ class SimulatorApp(App):
         self.query_one("#console-log", RichLog).write(
             "[dim]Simulation ready. Press START or SPACE to begin.[/dim]"
         )
+        self._ui_ready = True
 
     # ── Logger wiring ──────────────────────────────────────────────────────────
 
     def _wire_logger(self):
-        lg = self._logger
+        lg = self._gui_logger
 
         lg.on_thought = lambda tick, agent_id, thoughts, orders: \
             self.call_from_thread(self._show_thought, tick, agent_id, thoughts, orders)
@@ -351,7 +351,7 @@ class SimulatorApp(App):
 
         self._engine = SimulationEngine(
             agents=agents,
-            logger=self._logger,
+            logger=self._gui_logger,
             initial_price_history=list(seed_history or []),
             haggle_coordinator=coordinator,
             event_bus=bus,
@@ -407,116 +407,138 @@ class SimulatorApp(App):
     # ── Button / Select handlers ───────────────────────────────────────────────
 
     @on(Button.Pressed, "#btn-start")
-    def action_toggle_run(self):
-        if not self._engine:
-            return
-        if self.sim_running:
-            return
-        self._start_run()
+    def on_btn_start(self):
+        if self._engine and not self.sim_running:
+            self._start_continuous()
 
     @on(Button.Pressed, "#btn-step")
-    def action_step_once(self):
-        if not self._engine:
-            return
-        if self.sim_running:
-            return
-        if self._engine.tick == 0:
-            self._engine.prepare(self._ticks)
-        self._do_step()
+    def on_btn_step(self):
+        if self._engine and not self.sim_running:
+            self._do_step_async()
 
     @on(Button.Pressed, "#btn-pause")
-    def action_pause(self):
-        self._run_flag.clear()
+    def on_btn_pause(self):
+        self._continuous.clear()
         self.sim_running = False
 
     @on(Button.Pressed, "#btn-reset")
-    def action_reset(self):
-        self._stop_flag.set()
-        self._run_flag.clear()
-        self.sim_running = False
-        self._stop_flag.clear()
-        # Clear UI
-        self.query_one("#thought-log", RichLog).clear()
-        self.query_one("#console-log", RichLog).clear()
-        self._build_simulation()
-        self.query_one("#console-log", RichLog).write(
-            "[dim]Reset. Press START to run again.[/dim]"
-        )
+    async def on_btn_reset(self):
+        await self._reset()
 
     @on(Select.Changed, "#sel-sim")
     @on(Select.Changed, "#sel-scenario")
     @on(Select.Changed, "#sel-speed")
-    def on_select_changed(self, event: Select.Changed):
-        if event.select.id == "sel-speed" and event.value != Select.BLANK:
+    async def on_select_changed(self, event: Select.Changed):
+        if not self._ui_ready or event.value is None or event.value == Select.BLANK:
+            return
+        if event.select.id == "sel-speed":
             self._speed = str(event.value)
         else:
-            # Rebuild on mode/scenario change only if not running
             if not self.sim_running:
-                self._build_simulation()
+                await self._reset()
 
     # ── Keyboard bindings ──────────────────────────────────────────────────────
 
     def action_toggle_run(self):
         if self.sim_running:
-            self._run_flag.clear()
+            self._continuous.clear()
             self.sim_running = False
         else:
-            self._start_run()
+            if self._engine:
+                self._start_continuous()
 
     def action_step_once(self):
-        if not self.sim_running and self._engine:
-            if self._engine.tick == 0:
-                self._engine.prepare(self._ticks)
-            self._do_step()
+        if self._engine and not self.sim_running:
+            self._do_step_async()
+
+    async def action_reset(self):
+        await self._reset()
 
     # ── Run control ────────────────────────────────────────────────────────────
 
-    def _start_run(self):
-        if self._engine.tick == 0:
-            self._engine.prepare(self._ticks)
-        self._run_flag.set()
-        self.sim_running = True
-        self._stop_flag.clear()
-        self._run_worker()
+    def _ensure_worker(self):
+        """Start the background worker if it isn't running yet."""
+        if not self._worker_live:
+            self._worker_live = True
+            self._stop_flag.clear()
+            self._run_worker()
 
-    def _do_step(self):
-        """Run exactly one tick synchronously (for the Step button)."""
-        if self._engine.tick >= self._ticks:
-            return
-        has_more = self._engine.step()
-        if not has_more:
-            self._engine.finalize()
+    def _start_continuous(self):
+        """Switch to continuous mode: release one permit per tick delay."""
+        self.sim_running = True
+        self._continuous.set()
+        self._ensure_worker()
+        threading.Thread(target=self._release_loop, daemon=True).start()
+
+    def _do_step_async(self):
+        """Release exactly one permit so the worker advances one tick."""
+        self._ensure_worker()
+        self._step_sem.release(1)
+
+    def _release_loop(self):
+        """Runs in a daemon thread; releases permits at tick_delay rate."""
+        while self._continuous.is_set() and not self._stop_flag.is_set():
+            self._step_sem.release(1)
+            delay = _SPEED_DELAY.get(self._speed, 0.5)
+            time.sleep(max(delay, 0.01))
 
     @work(thread=True)
     def _run_worker(self):
-        """Background worker: steps the engine at the chosen speed."""
+        """
+        Background worker — ALL engine execution happens here so that
+        call_from_thread() inside logger callbacks is always valid.
+        Blocks on _step_sem; each permit = one tick.
+        finalize() is also called here (still in the worker thread).
+        """
+        self._engine.prepare(self._ticks)
+        completed = False
         while not self._stop_flag.is_set():
-            if not self._run_flag.is_set():
-                time.sleep(0.05)
+            acquired = self._step_sem.acquire(timeout=0.1)
+            if not acquired:
                 continue
-
+            if self._stop_flag.is_set():
+                break
             if self._engine.tick >= self._ticks:
                 break
-
             has_more = self._engine.step()
-
-            delay = _SPEED_DELAY.get(self._speed, 0.5)
-            if delay > 0:
-                time.sleep(delay)
-
             if not has_more:
+                completed = True
                 break
 
-        self.call_from_thread(self._on_run_finished)
-
-    def _on_run_finished(self):
-        self.sim_running = False
-        self._run_flag.clear()
-        if self._engine.tick >= self._ticks:
+        # finalize in the worker thread so logger callbacks can use call_from_thread
+        if completed and not self._stop_flag.is_set():
             self._engine.finalize()
+
+        self._worker_live = False
+        self.call_from_thread(self._on_run_finished, completed)
+
+    def _on_run_finished(self, completed: bool):
+        """Runs on main Textual thread — UI cleanup only, no engine calls."""
+        self._continuous.clear()
+        self.sim_running = False
+        if completed:
             self.query_one("#console-log", RichLog).write(
                 "[bold green]Simulation complete.[/bold green]"
             )
+
+    async def _reset(self):
+        """Stop running simulation and rebuild. Async to avoid blocking event loop."""
+        import asyncio
+        self._continuous.clear()
+        self.sim_running = False
+        self._stop_flag.set()
+        self._step_sem.release(1)     # unblock worker if waiting so it sees stop_flag
+        await asyncio.sleep(0.2)      # yield to let worker exit cleanly
+        # Fresh semaphore — guarantees zero leftover permits from the old run
+        self._step_sem  = threading.Semaphore(0)
+        self._stop_flag.clear()
+        self._worker_live = False
+        self.query_one("#thought-log", RichLog).clear()
+        self.query_one("#console-log", RichLog).clear()
+        self._build_simulation()
+        self.query_one("#console-log", RichLog).write(
+            "[dim]Reset. Press START or SPACE to run.[/dim]"
+        )
 
     # ── UI update helpers (always called on main thread) ──────────────────────
 
