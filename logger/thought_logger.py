@@ -57,6 +57,11 @@ class ThoughtLogger:
         console.print(thought_lines)
         console.print(order_block)
 
+    def log_anomaly(self, description: str, tick: int):
+        console.print(
+            f"\n[bold red][ANOMALY tick {tick}][/bold red] [red]{description}[/red]"
+        )
+
     def log_haggle_session(self, log: list[str]):
         if not self.verbose:
             return
