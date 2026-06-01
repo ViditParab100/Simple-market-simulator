@@ -65,7 +65,20 @@ def main():
                         help="Show run metrics summary at end")
     parser.add_argument("--scenario", choices=list(NAMED_SCENARIOS.keys()), default=None,
                         help="Inject a named stress-test scenario")
+    parser.add_argument("--gui",     action="store_true",
+                        help="Launch the interactive Textual GUI")
     args = parser.parse_args()
+
+    if args.gui:
+        from gui.app import launch
+        launch(
+            sim_mode=args.sim,
+            scenario=args.scenario or "none",
+            ticks=args.ticks,
+            speed="normal",
+            haggle=args.haggle,
+        )
+        return
 
     if args.sim == "hybrid":
         agents       = build_roster()
