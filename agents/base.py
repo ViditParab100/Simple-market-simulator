@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from market.models import Order, Trade, MarketState
+from market.haggle import HaggleIntent
 
 
 class Agent(ABC):
@@ -29,6 +30,13 @@ class Agent(ABC):
             self.trade_count += 1
             self.inventory -= trade.quantity
             self.cash += trade.price * trade.quantity
+
+    def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
+        """
+        Return a pre-tick negotiation intent, or None to skip haggling.
+        Override in each subclass to express archetype-specific thresholds.
+        """
+        return None
 
     def net_worth(self, market_price: float) -> float:
         return self.cash + self.inventory * market_price

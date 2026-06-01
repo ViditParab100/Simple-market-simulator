@@ -1,6 +1,7 @@
 from __future__ import annotations
 from .base import Agent
 from market.models import Order, OrderSide, MarketState
+from market.haggle import HaggleIntent
 
 _DEFAULT_PRICE = 20.0
 
@@ -81,3 +82,28 @@ class RationalAgent(Agent):
 
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
+
+    def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
+        fv = self._fair_value(state)
+        if fv is None:
+            return None
+        price     = state.last_price or _DEFAULT_PRICE
+        deviation = (price - fv) / fv
+        half      = self.margin / 2
+        if deviation < -self.margin and self.cash >= price:
+            # Undervalued — want to buy, willing to go up to halfway toward fair value
+            return HaggleIntent(
+                self.agent_id, OrderSide.BID,
+                price_target=price,
+                price_limit=round(price * (1 + half), 2),
+                quantity=self.trade_size,
+            )
+        if deviation > self.margin and self.inventory > 0:
+            # Overvalued — want to sell, willing to go down to halfway toward fair value
+            return HaggleIntent(
+                self.agent_id, OrderSide.ASK,
+                price_target=price,
+                price_limit=round(price * (1 - half), 2),
+                quantity=min(self.trade_size, self.inventory),
+            )
+        return None

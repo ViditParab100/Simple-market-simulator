@@ -1,6 +1,7 @@
 from __future__ import annotations
 from .base import Agent
 from market.models import Order, OrderSide, MarketState
+from market.haggle import HaggleIntent
 
 _DEFAULT_PRICE = 20.0
 
@@ -75,3 +76,25 @@ class SpeculatorAgent(Agent):
 
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
+
+    def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
+        if len(state.price_history) < 2:
+            return None
+        price    = state.last_price or _DEFAULT_PRICE
+        momentum = state.price_momentum
+        if momentum > self.momentum_threshold and self.inventory < self.max_position:
+            room = self.max_position - self.inventory
+            return HaggleIntent(
+                self.agent_id, OrderSide.BID,
+                price_target=price,
+                price_limit=round(price * (1 + self.aggressiveness * 2), 2),
+                quantity=min(5, room),
+            )
+        if momentum < -self.momentum_threshold and self.inventory > 0:
+            return HaggleIntent(
+                self.agent_id, OrderSide.ASK,
+                price_target=price,
+                price_limit=round(price * (1 - self.aggressiveness * 2), 2),
+                quantity=min(5, self.inventory),
+            )
+        return None

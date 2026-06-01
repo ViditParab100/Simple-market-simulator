@@ -57,6 +57,12 @@ class ThoughtLogger:
         console.print(thought_lines)
         console.print(order_block)
 
+    def log_haggle_session(self, log: list[str]):
+        if not self.verbose:
+            return
+        lines = "\n".join(f"  [dim]{l}[/dim]" for l in log)
+        console.print(f"\n[bold magenta]~~ HAGGLE ~~[/bold magenta]\n{lines}")
+
     def log_trade(self, trade: Trade):
         console.print(
             f"\n  [bold green]** TRADE[/bold green]  "
