@@ -1,0 +1,81 @@
+"""
+Named NPC definitions for Simulation 2.
+
+Each NPC has a distinct personality that creates a different style of
+market participation. The roster is designed so the five characters
+together cover all five archetypes as either a primary or secondary trait,
+ensuring a well-rounded market with realistic emergent behaviour.
+"""
+from __future__ import annotations
+from .activation import ArchetypeTag
+from .personality import PersonalityProfile
+from .npc import HybridNPC
+
+
+def build_roster(seed_price: float = 20.0) -> list[HybridNPC]:
+    """Return the default cast of Hybrid NPCs for --sim hybrid."""
+    return [
+        # Iris: fundamentals-first with a speculative streak
+        # Usually calm and rational, but chases momentum when it's strong enough
+        HybridNPC(
+            agent_id="Iris",
+            inventory=25,
+            cash=600.0,
+            profile=PersonalityProfile({
+                ArchetypeTag.RATIONAL:     0.50,
+                ArchetypeTag.SPECULATOR:   0.35,
+                ArchetypeTag.PANIC:        0.15,
+            }),
+        ),
+
+        # Marcus: cautious accumulator who also likes making spreads
+        # Steady buyer in thin markets; pivots to market-making when inventory is full
+        HybridNPC(
+            agent_id="Marcus",
+            inventory=15,
+            cash=900.0,
+            profile=PersonalityProfile({
+                ArchetypeTag.HOARDER:      0.60,
+                ArchetypeTag.MARKET_MAKER: 0.40,
+            }),
+        ),
+
+        # Dex: thrill-seeker — mostly speculates, panics badly under pressure
+        # Amplifies trends in both directions; most likely to trigger a cascade
+        HybridNPC(
+            agent_id="Dex",
+            inventory=10,
+            cash=400.0,
+            profile=PersonalityProfile({
+                ArchetypeTag.SPECULATOR:   0.45,
+                ArchetypeTag.PANIC:        0.35,
+                ArchetypeTag.RATIONAL:     0.20,
+            }),
+        ),
+
+        # Vera: liquidity provider who hoards when supply is scarce
+        # Normally stabilising; can flip to hoarder behaviour during supply shocks
+        HybridNPC(
+            agent_id="Vera",
+            inventory=35,
+            cash=700.0,
+            profile=PersonalityProfile({
+                ArchetypeTag.MARKET_MAKER: 0.55,
+                ArchetypeTag.HOARDER:      0.30,
+                ArchetypeTag.RATIONAL:     0.15,
+            }),
+        ),
+
+        # Rex: loss-averse accumulator — hoards relentlessly but panics on drawdowns
+        # Creates scarcity in calm markets, then dumps everything in a crash
+        HybridNPC(
+            agent_id="Rex",
+            inventory=20,
+            cash=500.0,
+            profile=PersonalityProfile({
+                ArchetypeTag.HOARDER:      0.50,
+                ArchetypeTag.PANIC:        0.30,
+                ArchetypeTag.SPECULATOR:   0.20,
+            }),
+        ),
+    ]
