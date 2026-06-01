@@ -1,0 +1,3 @@
+Developed a simulation framework modeling decentralized market behaviors. Used autonomous entities to stress-test price equilibrium in volatile conditions.
+Architected agent-based negotiation protocols, enabling autonomous "haggling" logic where entities independently adjusted bid/ask thresholds based on real-time inventory scarcity and demand surges.
+Built an event-driven pipeline with Kafka to trace trade settlements. Identified critical cases where agent hoarding or sell-offs caused systemic liquidity crashes.
