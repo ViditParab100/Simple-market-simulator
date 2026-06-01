@@ -15,8 +15,8 @@ _CONTAGION_PULSE_STRENGTH = 0.20
 class SimulationEngine:
     def __init__(
         self,
-        agents:               list[Agent],
-        logger:               ThoughtLogger,
+        agents:                list[Agent],
+        logger:                ThoughtLogger,
         initial_price_history: list[float]      | None = None,
         haggle_coordinator:    HaggleCoordinator | None = None,
         event_bus:             EventBus          | None = None,
@@ -31,6 +31,7 @@ class SimulationEngine:
         self.scenario_runner    = scenario_runner
         self.metrics_collector  = metrics_collector
         self.tick               = 0
+        self._total_ticks       = 0
         self.price_history: list[float] = list(initial_price_history or [])
         self._agent_map: dict[str, Agent] = {a.agent_id: a for a in agents}
 
@@ -38,6 +39,131 @@ class SimulationEngine:
             self.order_book.last_price = self.price_history[-1]
 
     # ------------------------------------------------------------------
+    # Step-by-step API (used by GUI)
+    # ------------------------------------------------------------------
+
+    def prepare(self, ticks: int):
+        """Initialise a run. Call once before the first step()."""
+        self._total_ticks = ticks
+        self.logger.log_header(len(self.agents), ticks)
+        if self.metrics_collector:
+            self.metrics_collector.record_initial(
+                self.agents, self.order_book.last_price or 20.0
+            )
+
+    def step(self) -> bool:
+        """
+        Execute one tick.  Returns True while more ticks remain,
+        False after the final tick has been executed.
+        """
+        if self.tick >= self._total_ticks:
+            return False
+        self._execute_tick()
+        return self.tick < self._total_ticks
+
+    def finalize(self):
+        """Emit end-of-run output. Call after the last step()."""
+        self.logger.log_final_state(self.agents, self.order_book.last_price)
+        if self.metrics_collector:
+            metrics = self.metrics_collector.compute(
+                self.agents, self.order_book.last_price
+            )
+            self.logger.log_metrics_summary(metrics)
+
+    # ------------------------------------------------------------------
+    # Convenience: run all ticks in one call (CLI path)
+    # ------------------------------------------------------------------
+
+    def run(self, ticks: int):
+        self.prepare(ticks)
+        while self.step():
+            pass
+        self.finalize()
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _execute_tick(self):
+        self.tick += 1
+        state = self._build_market_state()
+        self.order_book.clear()
+        self._clear_contagion()
+        tick_trades: list[Trade] = []
+
+        self.logger.log_tick_start(self.tick)
+
+        # Phase 0: Scenario interventions
+        if self.scenario_runner:
+            fired = self.scenario_runner.apply(
+                self.tick, self.agents, self.order_book, self.price_history
+            )
+            for description in fired:
+                self.logger.log_scenario_event(self.tick, description)
+            if fired:
+                state = self._build_market_state()
+
+        # Phase 1: Bilateral haggling
+        if self.haggle_coordinator:
+            haggle_results = self.haggle_coordinator.run(
+                self.agents, state, self.tick
+            )
+            for trade, log in haggle_results:
+                self.logger.log_haggle_session(log)
+                self._settle([trade], haggle=True)
+                self.price_history.append(trade.price)
+                self.order_book.last_price = trade.price
+                self.logger.log_trade(trade)
+                tick_trades.append(trade)
+            if haggle_results:
+                state = self._build_market_state()
+
+        # Phase 2: Regular order-book market
+        for agent in self.agents:
+            thoughts = agent.think(state)
+            orders   = agent.act(state)
+            self.logger.log_thought(self.tick, agent.agent_id, thoughts, orders)
+            for order in orders:
+                self.order_book.add_order(order)
+
+        trades = self.order_book.match(self.tick)
+        self._settle(trades, haggle=False)
+        self._broadcast_contagion(trades)
+        tick_trades.extend(trades)
+
+        if trades:
+            self.price_history.append(trades[-1].price)
+            for trade in trades:
+                self.logger.log_trade(trade)
+
+        tick_volume = sum(t.quantity for t in tick_trades)
+
+        self.logger.log_tick_summary(
+            self.tick,
+            self.order_book.last_price,
+            self.order_book.best_bid(),
+            self.order_book.best_ask(),
+            len(tick_trades),
+        )
+
+        if self.event_bus:
+            self.event_bus.publish(tick_summary_event(
+                tick=self.tick,
+                last_price=self.order_book.last_price,
+                bid_depth=self.order_book.bid_depth(),
+                ask_depth=self.order_book.ask_depth(),
+                trades_this_tick=len(tick_trades),
+            ))
+
+        if self.metrics_collector:
+            self.metrics_collector.record_tick(
+                tick=self.tick,
+                last_price=self.order_book.last_price,
+                bid_depth=self.order_book.bid_depth(),
+                ask_depth=self.order_book.ask_depth(),
+                trade_count=len(tick_trades),
+                volume=tick_volume,
+            )
 
     def _build_market_state(self) -> MarketState:
         return MarketState(
@@ -82,106 +208,3 @@ class SimulationEngine:
         for agent in self.agents:
             if isinstance(agent, HybridNPC):
                 agent.mood.contagion_pulse = 0.0
-
-    # ------------------------------------------------------------------
-
-    def run(self, ticks: int):
-        self.logger.log_header(len(self.agents), ticks)
-
-        # Snapshot initial net worths for metrics
-        if self.metrics_collector:
-            self.metrics_collector.record_initial(
-                self.agents, self.order_book.last_price or 20.0
-            )
-
-        for _ in range(ticks):
-            self.tick += 1
-            state = self._build_market_state()
-            self.order_book.clear()
-            self._clear_contagion()
-            tick_trades: list[Trade] = []
-
-            self.logger.log_tick_start(self.tick)
-
-            # ── Phase 0: Scenario interventions ─────────────────────────
-            if self.scenario_runner:
-                fired = self.scenario_runner.apply(
-                    self.tick, self.agents, self.order_book, self.price_history
-                )
-                for description in fired:
-                    self.logger.log_scenario_event(self.tick, description)
-                if fired:
-                    state = self._build_market_state()   # rebuild after intervention
-
-            # ── Phase 1: Bilateral haggling ──────────────────────────────
-            if self.haggle_coordinator:
-                haggle_results = self.haggle_coordinator.run(
-                    self.agents, state, self.tick
-                )
-                for trade, log in haggle_results:
-                    self.logger.log_haggle_session(log)
-                    self._settle([trade], haggle=True)
-                    self.price_history.append(trade.price)
-                    self.order_book.last_price = trade.price
-                    self.logger.log_trade(trade)
-                    tick_trades.append(trade)
-
-                if haggle_results:
-                    state = self._build_market_state()
-
-            # ── Phase 2: Regular order-book market ───────────────────────
-            for agent in self.agents:
-                thoughts = agent.think(state)
-                orders   = agent.act(state)
-                self.logger.log_thought(self.tick, agent.agent_id, thoughts, orders)
-                for order in orders:
-                    self.order_book.add_order(order)
-
-            trades = self.order_book.match(self.tick)
-            self._settle(trades, haggle=False)
-            self._broadcast_contagion(trades)
-            tick_trades.extend(trades)
-
-            if trades:
-                self.price_history.append(trades[-1].price)
-                for trade in trades:
-                    self.logger.log_trade(trade)
-
-            # ── Tick summary ─────────────────────────────────────────────
-            tick_volume = sum(t.quantity for t in tick_trades)
-
-            self.logger.log_tick_summary(
-                self.tick,
-                self.order_book.last_price,
-                self.order_book.best_bid(),
-                self.order_book.best_ask(),
-                len(tick_trades),
-            )
-
-            if self.event_bus:
-                self.event_bus.publish(tick_summary_event(
-                    tick=self.tick,
-                    last_price=self.order_book.last_price,
-                    bid_depth=self.order_book.bid_depth(),
-                    ask_depth=self.order_book.ask_depth(),
-                    trades_this_tick=len(tick_trades),
-                ))
-
-            if self.metrics_collector:
-                self.metrics_collector.record_tick(
-                    tick=self.tick,
-                    last_price=self.order_book.last_price,
-                    bid_depth=self.order_book.bid_depth(),
-                    ask_depth=self.order_book.ask_depth(),
-                    trade_count=len(tick_trades),
-                    volume=tick_volume,
-                )
-
-        # ── End of run ───────────────────────────────────────────────────
-        self.logger.log_final_state(self.agents, self.order_book.last_price)
-
-        if self.metrics_collector:
-            metrics = self.metrics_collector.compute(
-                self.agents, self.order_book.last_price
-            )
-            self.logger.log_metrics_summary(metrics)
