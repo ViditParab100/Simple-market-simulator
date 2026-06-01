@@ -1,6 +1,7 @@
 from __future__ import annotations
 from .base import Agent
 from market.models import Order, OrderSide, MarketState
+from market.haggle import HaggleIntent
 
 _DEFAULT_PRICE = 20.0
 
@@ -64,3 +65,19 @@ class HoarderAgent(Agent):
 
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
+
+    def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
+        shortfall = self.hoard_target - self.inventory
+        if shortfall <= 0:
+            return None
+        price = state.last_price or _DEFAULT_PRICE
+        # Target is a steep discount; limit is a small concession above target
+        target = round(price * self.buy_discount, 2)
+        limit  = round(price * min(self.buy_discount + 0.04, 0.99), 2)
+        qty    = min(5, shortfall)
+        if self.cash < limit * qty:
+            return None
+        return HaggleIntent(
+            self.agent_id, OrderSide.BID,
+            price_target=target, price_limit=limit, quantity=qty,
+        )

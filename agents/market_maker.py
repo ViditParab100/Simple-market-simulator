@@ -1,6 +1,7 @@
 from __future__ import annotations
 from .base import Agent
 from market.models import Order, OrderSide, MarketState
+from market.haggle import HaggleIntent
 
 _DEFAULT_PRICE = 20.0
 
@@ -70,3 +71,23 @@ class MarketMakerAgent(Agent):
 
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
+
+    def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
+        price = state.last_price or _DEFAULT_PRICE
+        spread = self.base_spread
+        # Only negotiate when inventory is imbalanced — otherwise let the book handle it
+        if self.inventory <= self.min_inventory and self.cash >= price:
+            return HaggleIntent(
+                self.agent_id, OrderSide.BID,
+                price_target=round(price * (1 - spread / 2), 2),
+                price_limit=round(price * (1 - spread / 4), 2),
+                quantity=self.quote_size,
+            )
+        if self.inventory >= self.max_inventory:
+            return HaggleIntent(
+                self.agent_id, OrderSide.ASK,
+                price_target=round(price * (1 + spread / 2), 2),
+                price_limit=round(price * (1 + spread / 4), 2),
+                quantity=min(self.quote_size, self.inventory),
+            )
+        return None

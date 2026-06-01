@@ -4,6 +4,7 @@ contest between its embedded archetypes.
 """
 from __future__ import annotations
 from market.models import Order, Trade, MarketState
+from market.haggle import HaggleIntent
 from agents.base import Agent
 from agents.market_maker import MarketMakerAgent
 from agents.speculator import SpeculatorAgent
@@ -125,6 +126,13 @@ class HybridNPC(Agent):
             delegate._recovery_counter = self._panic_recovery
 
         return delegate
+
+    def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
+        """Delegate haggle intent to whichever archetype last won the contest."""
+        if self._last_winner is None:
+            return None
+        delegate = self._build_delegate(self._last_winner)
+        return delegate.haggle_intent(state)
 
     @property
     def dominant_archetype(self) -> ArchetypeTag | None:

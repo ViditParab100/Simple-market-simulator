@@ -9,6 +9,7 @@ from agents.hoarder import HoarderAgent
 from agents.panic import PanicAgent
 from agents.rational import RationalAgent
 from agents.hybrid.roster import build_roster
+from market.haggle import HaggleCoordinator
 from logger.thought_logger import ThoughtLogger
 
 # Seed price history: mild uptrend so momentum/fair-value agents activate from tick 1
@@ -50,6 +51,8 @@ def main():
                         help="Random seed for random mode (default: 42)")
     parser.add_argument("--quiet",  action="store_true",
                         help="Hide per-agent thought logs")
+    parser.add_argument("--haggle", action="store_true",
+                        help="Enable pre-tick bilateral haggling phase")
     args = parser.parse_args()
 
     if args.sim == "hybrid":
@@ -62,8 +65,13 @@ def main():
         agents       = build_random_agents(args.agents, args.seed)
         seed_history = None
 
-    logger = ThoughtLogger(verbose=not args.quiet)
-    engine = SimulationEngine(agents=agents, logger=logger, initial_price_history=seed_history)
+    logger     = ThoughtLogger(verbose=not args.quiet)
+    coordinator = HaggleCoordinator(max_rounds=3) if args.haggle else None
+    engine     = SimulationEngine(
+        agents=agents, logger=logger,
+        initial_price_history=seed_history,
+        haggle_coordinator=coordinator,
+    )
     engine.run(ticks=args.ticks)
 
 

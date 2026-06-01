@@ -1,6 +1,7 @@
 from __future__ import annotations
 from .base import Agent
 from market.models import Order, OrderSide, MarketState
+from market.haggle import HaggleIntent
 
 _DEFAULT_PRICE = 20.0
 
@@ -73,3 +74,17 @@ class PanicAgent(Agent):
 
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
+
+    def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
+        if self._state != "calm" or self.inventory <= 0:
+            return None
+        if state.price_momentum <= self.panic_threshold:
+            price = state.last_price or _DEFAULT_PRICE
+            # Will accept down to dump_discount; tries to start at market
+            return HaggleIntent(
+                self.agent_id, OrderSide.ASK,
+                price_target=price,
+                price_limit=round(price * self.dump_discount, 2),
+                quantity=self.inventory,
+            )
+        return None
