@@ -58,19 +58,25 @@ Two simulations are available:
 - [x] `EventType` enum + `MarketEvent` dataclass — typed schema covering trades, tick summaries, and anomalies
 - [x] `EventBus` — in-process publish/subscribe bus; consumers register by event type
 - [x] `AuditConsumer` — stores full event history; exports to JSONL audit file
-- [x] `AnomalyDetector` consumer — flags: panic cascades, hoarding concentration, liquidity drain, price crash/spike, sell-off storms
+- [x] `AnomalyDetector` consumer — flags: panic cascades, liquidity drain, price crash/spike, sell-off storms
 - [x] Engine integration — emits `TRADE`, `HAGGLE_TRADE`, and `TICK_SUMMARY` events automatically
-- [x] `--events` CLI flag; anomalies print as inline warnings during the run
+- [x] `--events` CLI flag; anomalies print as inline red warnings during the run
 - [x] `--audit <path>` flag to write the full JSONL audit trail to disk
-- [x] 40+ tests for event schema, bus routing, audit consumer, and anomaly detection logic
+- [x] 39 tests for event schema, bus routing, audit consumer, and anomaly detection logic
 
-### Phase 5 — Stress Testing & Scenarios
-- [ ] Scenario runner: inject supply shocks, demand surges, and agent collapses
-- [ ] Metrics: price volatility, liquidity depth, Gini coefficient of wealth distribution
-- [ ] Reproduce the three critical failure modes:
-  1. Agent hoarding → artificial scarcity → price spike → crash
-  2. Panic sell cascade → liquidity drain → price collapse
-  3. Speculator feedback loop → bubble formation
+### Phase 5 — Stress Testing & Scenarios ✅
+- [x] `ScenarioEvent` + `ScenarioRunner` — timed interventions that fire at specified ticks
+- [x] Four intervention types: `supply_shock`, `demand_surge`, `agent_collapse`, `price_inject`
+- [x] Three named failure-mode scenarios reproducing the critical pathologies:
+  1. `hoarding_crash` — hoarder corners supply → artificial scarcity → price spike at tick 10 → hard crash at tick 15
+  2. `panic_cascade` — sharp price inject at tick 8 breaches all panic thresholds simultaneously → liquidity drain → second leg down at tick 12
+  3. `speculator_bubble` — 7 ticks of rising price injects feed Speculator momentum → hard reversal at tick 9 turns Speculator into a panic seller
+- [x] `MetricsCollector` — per-tick snapshots; end-of-run `RunMetrics` with price, activity, and wealth stats
+- [x] `gini()`, `price_volatility()`, `max_drawdown()` as standalone pure functions
+- [x] `--scenario hoarding_crash | panic_cascade | speculator_bubble` CLI flag
+- [x] `--metrics` CLI flag — shows run metrics table + per-agent PnL ranked by profit
+- [x] Scenario events logged in yellow inline; anomalies logged in red inline
+- [x] 59 tests (29 metrics + 30 scenarios) — all 335 tests passing
 
 ---
 
@@ -86,6 +92,8 @@ Each Hybrid NPC has a **personality profile** — a fixed set of 2–3 archetype
 Iris   ->  Rational (50%) | Speculator (35%) | Panic (15%)
 Marcus ->  Hoarder (60%)  | MarketMaker (40%)
 Dex    ->  Speculator (45%) | Panic (35%) | Rational (20%)
+Vera   ->  MarketMaker (55%) | Hoarder (30%) | Rational (15%)
+Rex    ->  Hoarder (50%)  | Panic (30%) | Speculator (20%)
 ```
 
 Every tick, each embedded archetype computes an **activation score** — how loudly that side of their personality is calling for control. The score combines the base weight with a live signal from market + personal state. The highest score wins and drives `think()` + `act()` for that tick.
@@ -114,7 +122,7 @@ These factors amplify or suppress activation scores each tick, simulating stress
 | Losing streak (last 3 trades at a loss) | Boosts Panic, suppresses Rational |
 | High market volatility | Amplifies whichever archetype already leads |
 | Very low cash reserve | Suppresses Hoarder, amplifies Panic |
-| Large competitor dump detected | Spikes Panic signal for all NPCs simultaneously |
+| Large competitor dump detected | Spikes Panic signal for all NPCs simultaneously (contagion) |
 
 ### Thought-Process Output — Hybrid Mode
 
@@ -150,20 +158,6 @@ The internal monologue shows the full activation contest before the winning arch
   > Decision: DUMP 41 units @ $15.00 -- take whatever the market gives.
 ```
 
-### Simulation 2 Roadmap
-
-- [x] Five pure archetypes as reusable building blocks (built in Phase 2)
-- [ ] `ActivationSignal` functions — one per archetype, returns 0–1 score from market + agent state
-- [ ] `MoodModifier` layer — streak tracker, volatility sensor, cash pressure, contagion detector
-- [ ] `PersonalityProfile` class — holds archetype weights, runs activation contest, returns winner
-- [ ] `HybridNPC` class — wraps `PersonalityProfile`, delegates `think()`/`act()` to winning archetype
-- [ ] Activation contest log in thought-process output (shows all scores + winner)
-- [ ] Mood swing event detection — logs when dominant archetype changes between ticks
-- [ ] Contagion signal — large Panic dump by one NPC boosts Panic score for all others next tick
-- [ ] Named NPC roster (Iris, Marcus, Dex, ...) with distinct personality profiles
-- [ ] `--sim hybrid` CLI mode
-- [ ] 40+ behavioral tests for activation logic, mood modifiers, and mood swing detection
-
 ### Emergent Behaviors to Watch For
 
 - **Mood swings** — dominant archetype displaced mid-trend (often coincides with price reversals)
@@ -173,35 +167,58 @@ The internal monologue shows the full activation contest before the winning arch
 
 ---
 
-## Architecture
+## Scenario Outcomes
 
-### Simulation 1 — Pure Archetype Market
+Each named scenario deliberately reproduces a real market failure pattern. Run with `--quiet --metrics` to see the outcome without the full thought log.
+
+### Panic Cascade (`--scenario panic_cascade`)
+
+A sudden price shock at tick 8 (-28%) breaches PanicAgent's -10% threshold. All panic-capable agents dump simultaneously. Hoarder lowball bids absorb supply at distressed prices. Speculator, caught long, becomes a forced seller for the next 8 ticks. Liquidity drain and price crash anomalies fire automatically.
 
 ```
-Simulation Engine  ->  Order Book  ->  Kafka Event Bus
-                              |
-              +-----------+---+-----------+
-              |           |              |
-        MarketMaker  Speculator  Hoarder  Panic  Rational
-          think()      think()   think()  think() think()
-          act()        act()     act()    act()   act()
+Price: $21.89 -> $12.01  (-44%)   Volatility: $4.46   Drawdown: 45%
+Panic-01 PnL: -30%  (bought the spike, sold the crash)
+Rational-01: -16%   (bought too early on the way down)
+```
+
+### Hoarding Crash (`--scenario hoarding_crash`)
+Supply shock at tick 5 concentrates inventory with the hoarder. Price injects spike the market to $30 at tick 10, then crash to $13 at tick 15. Agents who held through the spike give back all gains on the crash.
+
+### Speculator Bubble (`--scenario speculator_bubble`)
+Seven ticks of rising price injects feed a Speculator buying frenzy. Rational sees overvaluation and sells. At tick 9, a hard reversal (-42%) flips the Speculator into a panic seller and triggers a cascade.
+
+---
+
+## Architecture
+
+### Simulation 1 — Agent Zoo
+
+```
+Tick loop:
+  Phase 0: Scenario interventions (price_inject, supply_shock, ...)
+  Phase 1: Bilateral haggling (HaggleCoordinator)
+  Phase 2: Order book matching (bid/ask)
+  Phase 3: Settlement + contagion broadcast
+  Phase 4: Event emission (TRADE, TICK_SUMMARY -> EventBus -> consumers)
+  Phase 5: Metrics recording
+
+Agents:  MarketMaker  Speculator  Hoarder  Panic  Rational
+         think() + act() + haggle_intent() per tick
 ```
 
 ### Simulation 2 — Hybrid NPC Market
 
 ```
-Simulation Engine  ->  Order Book  ->  Kafka Event Bus
-                              |
-                  +-----------+-----------+
-                  |           |           |
-              HybridNPC    HybridNPC   HybridNPC
-                  |
-        PersonalityProfile
-         - archetype weights
-         - mood modifiers
-         - activation contest each tick
-                  |
-        winning archetype drives think() + act()
+Same tick loop as Sim 1, but each HybridNPC runs internally:
+
+  PersonalityProfile.run_contest()
+    -> raw activation signal per archetype  (0-1)
+    -> mood deltas (streak, volatility, cash pressure, contagion)
+    -> weighted scores  ->  winner
+
+  winner.think() + winner.act() + winner.haggle_intent()
+    -> logged with full activation contest header
+    -> MOOD SWING alert if dominant archetype changed vs last tick
 ```
 
 ---
@@ -211,45 +228,54 @@ Simulation Engine  ->  Order Book  ->  Kafka Event Bus
 ```
 Simple-market-simulator/
 |
-+-- main.py                        # CLI entry point (--sim random | zoo | hybrid)
++-- main.py                        # CLI entry point
 +-- requirements.txt
 |
 +-- market/
 |   +-- models.py                  # Order, Trade, MarketState dataclasses
 |   +-- order_book.py              # Bid/ask matching, price discovery
-|   +-- engine.py                  # Tick loop, settlement, price history
+|   +-- engine.py                  # Tick loop (5 phases), settlement
 |   +-- haggle.py                  # HaggleIntent, HaggleSession, HaggleCoordinator
 |   +-- events.py                  # EventType, MarketEvent, EventBus
 |   +-- consumers.py               # AuditConsumer, AnomalyDetector
+|   +-- metrics.py                 # gini(), volatility(), MetricsCollector, RunMetrics
+|   +-- scenarios.py               # ScenarioEvent, ScenarioRunner, named scenarios
 |
 +-- agents/
-|   +-- base.py                    # Abstract Agent, on_trade(), net_worth()
+|   +-- base.py                    # Abstract Agent: think(), act(), haggle_intent()
 |   +-- random_agent.py            # Baseline random agent
-|   +-- market_maker.py            # Sim 1: MarketMaker archetype
-|   +-- speculator.py              # Sim 1: Speculator archetype
-|   +-- hoarder.py                 # Sim 1: Hoarder archetype
-|   +-- panic.py                   # Sim 1: Panic archetype
-|   +-- rational.py                # Sim 1: Rational archetype
-|   +-- hybrid/                    # Sim 2: Hybrid NPC system
-|       +-- activation.py          # Per-archetype activation signal functions
-|       +-- mood.py                # Mood modifier layer
-|       +-- personality.py         # PersonalityProfile + activation contest
-|       +-- npc.py                 # HybridNPC class
-|       +-- roster.py              # Named NPC definitions (Iris, Marcus, Dex, ...)
+|   +-- market_maker.py            # Sim 1 archetype
+|   +-- speculator.py              # Sim 1 archetype
+|   +-- hoarder.py                 # Sim 1 archetype
+|   +-- panic.py                   # Sim 1 archetype
+|   +-- rational.py                # Sim 1 archetype
+|   +-- hybrid/
+|       +-- activation.py          # Per-archetype activation signal functions (0-1)
+|       +-- mood.py                # Streak, volatility, cash, contagion modifiers
+|       +-- personality.py         # PersonalityProfile + ContestResult
+|       +-- npc.py                 # HybridNPC: delegates to winning archetype
+|       +-- roster.py              # Named NPCs: Iris, Marcus, Dex, Vera, Rex
 |
 +-- logger/
-|   +-- thought_logger.py          # Rich-powered thought + trade output
+|   +-- thought_logger.py          # Rich output: thoughts, trades, haggle, anomalies,
+|                                  #              scenarios, metrics tables
 |
 +-- tests/
-    +-- test_models.py
-    +-- test_order_book.py
-    +-- test_base_agent.py
-    +-- test_random_agent.py
-    +-- test_engine.py
-    +-- test_agents_zoo.py         # 42 behavioral tests for Sim 1 archetypes
-    +-- test_haggle.py             # 42 tests for Phase 3 haggling protocol
-    +-- test_events.py             # 40+ tests for Phase 4 event pipeline
-    +-- test_hybrid/               # Sim 2 tests (activation, mood, NPC behavior)
+    +-- test_models.py             # MarketState properties, dataclass fields
+    +-- test_order_book.py         # Matching, priority, self-trade, depth
+    +-- test_base_agent.py         # Settlement, trade_count, net_worth
+    +-- test_random_agent.py       # Determinism, think/act consistency
+    +-- test_engine.py             # Conservation laws, tick counter, price history
+    +-- test_agents_zoo.py         # 42 behavioral tests for all 5 archetypes
+    +-- test_haggle.py             # Session, coordinator, per-agent intents
+    +-- test_events.py             # Schema, bus routing, audit, anomaly detection
+    +-- test_metrics.py            # gini, volatility, drawdown, MetricsCollector
+    +-- test_scenarios.py          # ScenarioRunner, all actions, predefined scenarios
+    +-- test_hybrid/
+        +-- test_activation.py     # All 5 activation signal functions
+        +-- test_mood.py           # All 4 mood modifier types
+        +-- test_personality.py    # Contest logic, weight normalisation
+        +-- test_npc.py            # HybridNPC interface, panic FSM, contagion
 ```
 
 ---
@@ -260,30 +286,52 @@ Simple-market-simulator/
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the random baseline simulation (4 agents, 20 ticks)
+# Run the random baseline (4 agents, 20 ticks)
 python main.py
 
-# Run Simulation 1 — Agent Zoo (5 archetypes)
+# Run Simulation 1 -- Agent Zoo
 python main.py --sim zoo --ticks 30
 
-# Run Simulation 2 — Hybrid NPCs
+# Run Simulation 2 -- Hybrid NPCs
 python main.py --sim hybrid --ticks 30
 
-# Enable pre-market bilateral haggling
+# Enable bilateral haggling (pre-market negotiation)
 python main.py --sim zoo --ticks 20 --haggle
 
-# Enable event pipeline + print anomaly warnings
+# Enable event pipeline + inline anomaly warnings
 python main.py --sim zoo --ticks 50 --events
 
 # Write full JSONL audit trail to disk
 python main.py --sim hybrid --ticks 100 --events --audit audit.jsonl
 
-# Run quietly (hide thought logs, show summary only)
-python main.py --sim zoo --ticks 50 --quiet
+# Stress-test with a named scenario
+python main.py --sim zoo --ticks 25 --scenario panic_cascade --events --metrics --quiet
+python main.py --sim zoo --ticks 25 --scenario hoarding_crash --metrics --quiet
+python main.py --sim zoo --ticks 20 --scenario speculator_bubble --metrics --quiet
 
-# Run all tests
+# Full kitchen-sink run
+python main.py --sim hybrid --ticks 30 --haggle --events --metrics --scenario panic_cascade
+
+# Run all 335 tests
 python -m pytest tests/ -v
 ```
+
+---
+
+## CLI Reference
+
+| Flag | Values | Description |
+|---|---|---|
+| `--sim` | `random` `zoo` `hybrid` | Simulation mode (default: `random`) |
+| `--ticks` | integer | Number of simulation ticks (default: 20) |
+| `--agents` | integer | Number of agents in random mode (default: 4) |
+| `--seed` | integer | Random seed for random mode (default: 42) |
+| `--quiet` | flag | Hide per-agent thought logs |
+| `--haggle` | flag | Enable pre-market bilateral haggling phase |
+| `--events` | flag | Enable event pipeline + inline anomaly detection |
+| `--audit` | file path | Write JSONL audit trail to disk (requires `--events`) |
+| `--metrics` | flag | Show run metrics summary + per-agent PnL at end |
+| `--scenario` | `hoarding_crash` `panic_cascade` `speculator_bubble` | Inject a named stress-test scenario |
 
 ---
 
@@ -292,16 +340,6 @@ python -m pytest tests/ -v
 | Layer | Technology |
 |---|---|
 | Simulation core | Python 3.11+ |
-| Event pipeline | Apache Kafka (Phase 4) |
+| Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
 | Thought-process output | `rich` (terminal panels, tables, color) |
-| Testing | `pytest` |
-
----
-
-## Key Concepts
-
-**Price Equilibrium Stress Testing** — The simulation deliberately introduces irrational agents (hoarders, panic sellers) alongside rational ones to observe when and how equilibrium breaks down.
-
-**Haggling Protocol** — Agents don't just hit the order book blindly. They first attempt bilateral negotiation, adjusting their thresholds based on real-time scarcity and competing offers. Only unresolved orders flow to the central book. *(Phase 3)*
-
-**Systemic Liquidity Risk** — The Kafka pipeline enables post-hoc analysis of *when* the market became fragile — which agent triggered the cascade, which tick the liquidity depth fell below safe levels, and how long recovery took. *(Phase 4)*
+| Testing | `pytest` — 335 tests across 14 files |
