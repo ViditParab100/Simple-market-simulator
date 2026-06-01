@@ -12,25 +12,25 @@ class RandomAgent(Agent):
     def __init__(self, agent_id: str, inventory: int, cash: float, seed: int | None = None):
         super().__init__(agent_id, inventory, cash)
         self.rng = random.Random(seed)
+        self._next_action: str = "hold"  # set by think(), consumed by act()
 
     def think(self, state: MarketState) -> list[str]:
         price = state.last_price or _DEFAULT_PRICE
-        action = self._pick_action(state)
+        self._next_action = self._pick_action(state)
         return [
             f"Inventory: {self.inventory} units  |  Cash: ${self.cash:.2f}  |  Market: ${price:.2f}",
-            f"No strategy - picking randomly. Action: {action.upper()}",
+            f"No strategy - picking randomly. Action: {self._next_action.upper()}",
         ]
 
     def act(self, state: MarketState) -> list[Order]:
         price = state.last_price or _DEFAULT_PRICE
-        action = self._pick_action(state)
 
-        if action == "buy" and self.cash >= price:
+        if self._next_action == "buy" and self.cash >= price:
             bid_price = round(price * self.rng.uniform(0.95, 1.05), 2)
             qty = self.rng.randint(1, 5)
             return [Order(self.agent_id, OrderSide.BID, bid_price, qty, state.tick)]
 
-        if action == "sell" and self.inventory > 0:
+        if self._next_action == "sell" and self.inventory > 0:
             ask_price = round(price * self.rng.uniform(0.95, 1.05), 2)
             qty = self.rng.randint(1, min(5, self.inventory))
             return [Order(self.agent_id, OrderSide.ASK, ask_price, qty, state.tick)]
