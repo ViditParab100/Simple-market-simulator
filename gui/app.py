@@ -46,13 +46,32 @@ from gui.logger import GUILogger
 
 _SEED_HISTORY = [round(19.0 + i * 0.25, 2) for i in range(10)]
 
+# Ordered slowest -> fastest. Each tier sets a per-thought delay (seconds the
+# worker pauses after each agent's reasoning is shown) and a gap between ticks.
+_SPEED_ORDER = ["very_slow", "slow", "normal", "fast", "instant"]
+
 _SPEED_OPTIONS = [
-    ("Slow   (1.5 s/tick)",  "slow"),
-    ("Normal (0.5 s/tick)",  "normal"),
-    ("Fast   (0.1 s/tick)",  "fast"),
-    ("Instant",              "instant"),
+    ("Very Slow (1.2 s/thought)", "very_slow"),
+    ("Slow      (0.6 s/thought)", "slow"),
+    ("Normal    (0.25 s/thought)", "normal"),
+    ("Fast      (0.08 s/thought)", "fast"),
+    ("Instant   (no pauses)",      "instant"),
 ]
-_SPEED_DELAY = {"slow": 1.5, "normal": 0.5, "fast": 0.1, "instant": 0.0}
+
+# (per-thought delay, between-tick gap) in seconds
+_SPEED_DELAY = {
+    "very_slow": (1.2,  0.6),
+    "slow":      (0.6,  0.3),
+    "normal":    (0.25, 0.15),
+    "fast":      (0.08, 0.05),
+    "instant":   (0.0,  0.0),
+}
+
+def _thought_delay(speed: str) -> float:
+    return _SPEED_DELAY.get(speed, (0.25, 0.15))[0]
+
+def _tick_gap(speed: str) -> float:
+    return _SPEED_DELAY.get(speed, (0.25, 0.15))[1]
 
 _SIM_OPTIONS = [
     ("Agent Zoo (5 archetypes)", "zoo"),
@@ -192,10 +211,12 @@ class SimulatorApp(App):
     CSS = CSS
     TITLE = "Simple Market Simulator"
     BINDINGS = [
-        Binding("space", "toggle_run", "Start / Pause", priority=True),
-        Binding("s",     "step_once",  "Step",          priority=True),
-        Binding("r",     "reset",      "Reset",         priority=True),
-        Binding("q",     "quit",       "Quit",          priority=True),
+        Binding("space",       "toggle_run",  "Start / Pause", priority=True),
+        Binding("s",           "step_once",   "Step",          priority=True),
+        Binding("r",           "reset",       "Reset",         priority=True),
+        Binding("plus,equals_sign,equal", "speed_up",   "Faster", priority=True),
+        Binding("minus,underscore",       "speed_down", "Slower", priority=True),
+        Binding("q",           "quit",        "Quit",          priority=True),
     ]
 
     # Reactive state
@@ -253,6 +274,8 @@ class SimulatorApp(App):
                 yield Button("RESET",  id="btn-reset",  variant="error")
 
                 yield Label("", id="lbl-sep2")
+                yield Label("Speed: Normal", id="lbl-speed")
+                yield Label("[dim]+/- to adjust[/dim]", id="lbl-speed-hint")
                 yield Label("Tick:  0 / 20",  id="lbl-tick")
                 yield Label("Price: --",      id="lbl-price")
                 yield Label("Bid:   --",      id="lbl-bid")
@@ -295,6 +318,7 @@ class SimulatorApp(App):
         # Build the initial simulation
         self._build_simulation()
 
+        self._update_speed_label()
         self.query_one("#console-log", RichLog).write(
             "[dim]Simulation ready. Press START or SPACE to begin.[/dim]"
         )
@@ -305,8 +329,7 @@ class SimulatorApp(App):
     def _wire_logger(self):
         lg = self._gui_logger
 
-        lg.on_thought = lambda tick, agent_id, thoughts, orders: \
-            self.call_from_thread(self._show_thought, tick, agent_id, thoughts, orders)
+        lg.on_thought = self._on_thought_paced
 
         lg.on_trade = lambda trade: \
             self.call_from_thread(self._show_trade, trade)
@@ -328,6 +351,17 @@ class SimulatorApp(App):
 
         lg.on_metrics = lambda m: \
             self.call_from_thread(self._show_metrics, m)
+
+    def _on_thought_paced(self, tick, agent_id, thoughts, orders):
+        """
+        Runs in the worker thread (called inside engine.step()).
+        Pushes the thought to the UI, then pauses for the configured
+        per-thought delay so reasoning appears one agent at a time.
+        Step mode (not continuous) shows the full tick instantly.
+        """
+        self.call_from_thread(self._show_thought, tick, agent_id, thoughts, orders)
+        if self._continuous.is_set():
+            self._interruptible_sleep(_thought_delay(self._speed))
 
     # ── Simulation build ───────────────────────────────────────────────────────
 
@@ -433,6 +467,7 @@ class SimulatorApp(App):
             return
         if event.select.id == "sel-speed":
             self._speed = str(event.value)
+            self._update_speed_label()
         else:
             if not self.sim_running:
                 await self._reset()
@@ -454,6 +489,32 @@ class SimulatorApp(App):
     async def action_reset(self):
         await self._reset()
 
+    def action_speed_up(self):
+        self._shift_speed(+1)
+
+    def action_speed_down(self):
+        self._shift_speed(-1)
+
+    def _shift_speed(self, direction: int):
+        """Move one tier toward faster (+1) or slower (-1) and sync the dropdown."""
+        idx = _SPEED_ORDER.index(self._speed) if self._speed in _SPEED_ORDER else 2
+        idx = max(0, min(len(_SPEED_ORDER) - 1, idx + direction))
+        self._speed = _SPEED_ORDER[idx]
+        # Sync dropdown without retriggering a rebuild
+        sel = self.query_one("#sel-speed", Select)
+        if sel.value != self._speed:
+            sel.value = self._speed
+        self._update_speed_label()
+
+    def _update_speed_label(self):
+        try:
+            label = self.query_one("#lbl-speed", Label)
+        except Exception:
+            return
+        td = _thought_delay(self._speed)
+        pretty = self._speed.replace("_", " ").title()
+        label.update(f"Speed: {pretty} ({td:.2f}s/thought)")
+
     # ── Run control ────────────────────────────────────────────────────────────
 
     def _ensure_worker(self):
@@ -464,46 +525,56 @@ class SimulatorApp(App):
             self._run_worker()
 
     def _start_continuous(self):
-        """Switch to continuous mode: release one permit per tick delay."""
+        """Run ticks back-to-back; pacing is handled by the per-thought delay."""
         self.sim_running = True
         self._continuous.set()
         self._ensure_worker()
-        threading.Thread(target=self._release_loop, daemon=True).start()
 
     def _do_step_async(self):
         """Release exactly one permit so the worker advances one tick."""
         self._ensure_worker()
         self._step_sem.release(1)
 
-    def _release_loop(self):
-        """Runs in a daemon thread; releases permits at tick_delay rate."""
-        while self._continuous.is_set() and not self._stop_flag.is_set():
-            self._step_sem.release(1)
-            delay = _SPEED_DELAY.get(self._speed, 0.5)
-            time.sleep(max(delay, 0.01))
+    def _interruptible_sleep(self, seconds: float):
+        """Sleep that wakes early if the run is stopped or paused."""
+        waited = 0.0
+        while (waited < seconds
+               and not self._stop_flag.is_set()
+               and self._continuous.is_set()):
+            time.sleep(min(0.05, seconds - waited))
+            waited += 0.05
 
     @work(thread=True)
     def _run_worker(self):
         """
         Background worker — ALL engine execution happens here so that
         call_from_thread() inside logger callbacks is always valid.
-        Blocks on _step_sem; each permit = one tick.
-        finalize() is also called here (still in the worker thread).
+
+        Continuous mode: run ticks back-to-back, pausing `_tick_gap` between
+        ticks (intra-tick pacing comes from the per-thought delay).
+        Step mode: block on the semaphore; one permit = one tick.
         """
         self._engine.prepare(self._ticks)
         completed = False
         while not self._stop_flag.is_set():
-            acquired = self._step_sem.acquire(timeout=0.1)
-            if not acquired:
-                continue
+            if not self._continuous.is_set():
+                # Step mode — wait for a permit (one tick)
+                if not self._step_sem.acquire(timeout=0.1):
+                    continue
+
             if self._stop_flag.is_set():
                 break
             if self._engine.tick >= self._ticks:
                 break
+
             has_more = self._engine.step()
             if not has_more:
                 completed = True
                 break
+
+            # Between-tick gap (continuous mode only)
+            if self._continuous.is_set():
+                self._interruptible_sleep(_tick_gap(self._speed))
 
         # finalize in the worker thread so logger callbacks can use call_from_thread
         if completed and not self._stop_flag.is_set():
