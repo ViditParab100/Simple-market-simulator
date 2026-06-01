@@ -3,6 +3,8 @@ from .order_book import OrderBook
 from .models import MarketState, Trade
 from .haggle import HaggleCoordinator
 from .events import EventBus, trade_event, tick_summary_event
+from .metrics import MetricsCollector
+from .scenarios import ScenarioRunner
 from agents.base import Agent
 from logger.thought_logger import ThoughtLogger
 
@@ -13,17 +15,21 @@ _CONTAGION_PULSE_STRENGTH = 0.20
 class SimulationEngine:
     def __init__(
         self,
-        agents: list[Agent],
-        logger: ThoughtLogger,
-        initial_price_history: list[float] | None = None,
-        haggle_coordinator: HaggleCoordinator | None = None,
-        event_bus: EventBus | None = None,
+        agents:               list[Agent],
+        logger:               ThoughtLogger,
+        initial_price_history: list[float]      | None = None,
+        haggle_coordinator:    HaggleCoordinator | None = None,
+        event_bus:             EventBus          | None = None,
+        scenario_runner:       ScenarioRunner    | None = None,
+        metrics_collector:     MetricsCollector  | None = None,
     ):
         self.agents             = agents
         self.order_book         = OrderBook()
         self.logger             = logger
         self.haggle_coordinator = haggle_coordinator
         self.event_bus          = event_bus
+        self.scenario_runner    = scenario_runner
+        self.metrics_collector  = metrics_collector
         self.tick               = 0
         self.price_history: list[float] = list(initial_price_history or [])
         self._agent_map: dict[str, Agent] = {a.agent_id: a for a in agents}
@@ -82,6 +88,12 @@ class SimulationEngine:
     def run(self, ticks: int):
         self.logger.log_header(len(self.agents), ticks)
 
+        # Snapshot initial net worths for metrics
+        if self.metrics_collector:
+            self.metrics_collector.record_initial(
+                self.agents, self.order_book.last_price or 20.0
+            )
+
         for _ in range(ticks):
             self.tick += 1
             state = self._build_market_state()
@@ -91,7 +103,17 @@ class SimulationEngine:
 
             self.logger.log_tick_start(self.tick)
 
-            # ── Phase 1: Bilateral haggling ─────────────────────────────
+            # ── Phase 0: Scenario interventions ─────────────────────────
+            if self.scenario_runner:
+                fired = self.scenario_runner.apply(
+                    self.tick, self.agents, self.order_book, self.price_history
+                )
+                for description in fired:
+                    self.logger.log_scenario_event(self.tick, description)
+                if fired:
+                    state = self._build_market_state()   # rebuild after intervention
+
+            # ── Phase 1: Bilateral haggling ──────────────────────────────
             if self.haggle_coordinator:
                 haggle_results = self.haggle_coordinator.run(
                     self.agents, state, self.tick
@@ -107,7 +129,7 @@ class SimulationEngine:
                 if haggle_results:
                     state = self._build_market_state()
 
-            # ── Phase 2: Regular order-book market ──────────────────────
+            # ── Phase 2: Regular order-book market ───────────────────────
             for agent in self.agents:
                 thoughts = agent.think(state)
                 orders   = agent.act(state)
@@ -125,7 +147,9 @@ class SimulationEngine:
                 for trade in trades:
                     self.logger.log_trade(trade)
 
-            # ── Tick summary + event ─────────────────────────────────────
+            # ── Tick summary ─────────────────────────────────────────────
+            tick_volume = sum(t.quantity for t in tick_trades)
+
             self.logger.log_tick_summary(
                 self.tick,
                 self.order_book.last_price,
@@ -143,4 +167,21 @@ class SimulationEngine:
                     trades_this_tick=len(tick_trades),
                 ))
 
+            if self.metrics_collector:
+                self.metrics_collector.record_tick(
+                    tick=self.tick,
+                    last_price=self.order_book.last_price,
+                    bid_depth=self.order_book.bid_depth(),
+                    ask_depth=self.order_book.ask_depth(),
+                    trade_count=len(tick_trades),
+                    volume=tick_volume,
+                )
+
+        # ── End of run ───────────────────────────────────────────────────
         self.logger.log_final_state(self.agents, self.order_book.last_price)
+
+        if self.metrics_collector:
+            metrics = self.metrics_collector.compute(
+                self.agents, self.order_book.last_price
+            )
+            self.logger.log_metrics_summary(metrics)

@@ -12,6 +12,8 @@ from agents.hybrid.roster import build_roster
 from market.haggle import HaggleCoordinator
 from market.events import EventBus, EventType
 from market.consumers import AuditConsumer, AnomalyDetector
+from market.metrics import MetricsCollector
+from market.scenarios import NAMED_SCENARIOS
 from logger.thought_logger import ThoughtLogger
 
 # Seed price history: mild uptrend so momentum/fair-value agents activate from tick 1
@@ -57,8 +59,12 @@ def main():
                         help="Enable pre-tick bilateral haggling phase")
     parser.add_argument("--events", action="store_true",
                         help="Enable event pipeline with anomaly detection")
-    parser.add_argument("--audit",  type=str, default=None, metavar="PATH",
+    parser.add_argument("--audit",    type=str, default=None, metavar="PATH",
                         help="Write JSONL audit trail to PATH (requires --events)")
+    parser.add_argument("--metrics", action="store_true",
+                        help="Show run metrics summary at end")
+    parser.add_argument("--scenario", choices=list(NAMED_SCENARIOS.keys()), default=None,
+                        help="Inject a named stress-test scenario")
     args = parser.parse_args()
 
     if args.sim == "hybrid":
@@ -86,11 +92,16 @@ def main():
         bus.subscribe(EventType.ANOMALY,
                       lambda e: logger.log_anomaly(e.metadata.get("description", ""), e.tick))
 
+    scenario  = NAMED_SCENARIOS.get(args.scenario) if args.scenario else None
+    collector = MetricsCollector() if args.metrics else None
+
     engine = SimulationEngine(
         agents=agents, logger=logger,
         initial_price_history=seed_history,
         haggle_coordinator=coordinator,
         event_bus=bus,
+        scenario_runner=scenario,
+        metrics_collector=collector,
     )
     engine.run(ticks=args.ticks)
 
