@@ -8,7 +8,11 @@ from agents.speculator import SpeculatorAgent
 from agents.hoarder import HoarderAgent
 from agents.panic import PanicAgent
 from agents.rational import RationalAgent
+from agents.hybrid.roster import build_roster
 from logger.thought_logger import ThoughtLogger
+
+# Seed price history: mild uptrend so momentum/fair-value agents activate from tick 1
+_SEED_HISTORY = [round(19.0 + i * 0.25, 2) for i in range(10)]
 
 
 def build_random_agents(n: int, seed: int) -> list:
@@ -36,8 +40,8 @@ def build_zoo_agents() -> list:
 
 def main():
     parser = argparse.ArgumentParser(description="Simple Market Simulator")
-    parser.add_argument("--sim",    choices=["random", "zoo"], default="random",
-                        help="Simulation mode: 'random' (default) or 'zoo' (5 archetypes)")
+    parser.add_argument("--sim",    choices=["random", "zoo", "hybrid"], default="random",
+                        help="Simulation mode: random | zoo | hybrid (default: random)")
     parser.add_argument("--ticks",  type=int, default=20,
                         help="Number of simulation ticks (default: 20)")
     parser.add_argument("--agents", type=int, default=4,
@@ -48,12 +52,17 @@ def main():
                         help="Hide per-agent thought logs")
     args = parser.parse_args()
 
-    agents = build_zoo_agents() if args.sim == "zoo" else build_random_agents(args.agents, args.seed)
+    if args.sim == "hybrid":
+        agents       = build_roster()
+        seed_history = _SEED_HISTORY
+    elif args.sim == "zoo":
+        agents       = build_zoo_agents()
+        seed_history = _SEED_HISTORY
+    else:
+        agents       = build_random_agents(args.agents, args.seed)
+        seed_history = None
+
     logger = ThoughtLogger(verbose=not args.quiet)
-
-    # Seed zoo with a mild uptrend so momentum/fair-value agents have context from tick 1
-    seed_history = [round(19.0 + i * 0.25, 2) for i in range(10)] if args.sim == "zoo" else None
-
     engine = SimulationEngine(agents=agents, logger=logger, initial_price_history=seed_history)
     engine.run(ticks=args.ticks)
 
