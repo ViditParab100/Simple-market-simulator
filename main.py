@@ -65,6 +65,8 @@ def main():
                         help="Show run metrics summary at end")
     parser.add_argument("--scenario", choices=list(NAMED_SCENARIOS.keys()), default=None,
                         help="Inject a named stress-test scenario")
+    parser.add_argument("--consume", type=float, default=0.0, metavar="RATE",
+                        help="Per-tick survival consumption rate for every agent (e.g. 2.0)")
     parser.add_argument("--gui",     action="store_true",
                         help="Launch the interactive Textual GUI")
     args = parser.parse_args()
@@ -77,6 +79,7 @@ def main():
             ticks=args.ticks,
             speed="normal",
             haggle=args.haggle,
+            consumption=args.consume,
         )
         return
 
@@ -115,6 +118,7 @@ def main():
         event_bus=bus,
         scenario_runner=scenario,
         metrics_collector=collector,
+        consumption_rate=args.consume,
     )
     engine.run(ticks=args.ticks)
 

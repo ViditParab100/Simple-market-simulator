@@ -227,13 +227,14 @@ class SimulatorApp(App):
 
     def __init__(self, sim_mode: str = "zoo", scenario: str = "none",
                  ticks: int = 20, speed: str = "normal",
-                 haggle: bool = False):
+                 haggle: bool = False, consumption: float = 0.0):
         super().__init__()
-        self._sim_mode  = sim_mode
-        self._scenario  = scenario
-        self._ticks     = ticks
-        self._speed     = speed
-        self._haggle    = haggle
+        self._sim_mode    = sim_mode
+        self._scenario    = scenario
+        self._ticks       = ticks
+        self._speed       = speed
+        self._haggle      = haggle
+        self._consumption = consumption
 
         # Engine + GUI bridge
         self._engine:    Optional[SimulationEngine] = None
@@ -346,6 +347,9 @@ class SimulatorApp(App):
         lg.on_anomaly = lambda desc, tick: \
             self.call_from_thread(self._show_anomaly, desc, tick)
 
+        lg.on_consumption = lambda tick, total, starving: \
+            self.call_from_thread(self._show_consumption, tick, total, starving)
+
         lg.on_final_state = lambda agents, lp: \
             self.call_from_thread(self._show_final_state, agents, lp)
 
@@ -391,6 +395,7 @@ class SimulatorApp(App):
             event_bus=bus,
             scenario_runner=scenario,
             metrics_collector=MetricsCollector(),
+            consumption_rate=self._consumption,
         )
 
         self._prices = list(seed_history or [20.0])
@@ -670,6 +675,13 @@ class SimulatorApp(App):
             f"[dim]\\[{tick:02d}][/dim] [bold red]ANOMALY[/bold red]   {description}"
         )
 
+    def _show_consumption(self, tick: int, total_consumed: float, starving: list):
+        msg = (f"[dim]\\[{tick:02d}][/dim] [blue]CONSUMED[/blue]  "
+               f"{total_consumed:.1f} units")
+        if starving:
+            msg += f"  [bold red](STARVING: {', '.join(starving)})[/bold red]"
+        self.query_one("#console-log", RichLog).write(msg)
+
     def _show_final_state(self, agents, last_price):
         clog = self.query_one("#console-log", RichLog)
         clog.write("\n[bold cyan]--- Final State ---[/bold cyan]")
@@ -754,12 +766,14 @@ class SimulatorApp(App):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def launch(sim_mode: str = "zoo", scenario: str = "none",
-           ticks: int = 20, speed: str = "normal", haggle: bool = False):
+           ticks: int = 20, speed: str = "normal", haggle: bool = False,
+           consumption: float = 0.0):
     app = SimulatorApp(
         sim_mode=sim_mode,
         scenario=scenario,
         ticks=ticks,
         speed=speed,
         haggle=haggle,
+        consumption=consumption,
     )
     app.run()

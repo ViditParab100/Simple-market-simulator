@@ -22,6 +22,7 @@ class SimulationEngine:
         event_bus:             EventBus          | None = None,
         scenario_runner:       ScenarioRunner    | None = None,
         metrics_collector:     MetricsCollector  | None = None,
+        consumption_rate:      float                    = 0.0,
     ):
         self.agents             = agents
         self.order_book         = OrderBook()
@@ -30,10 +31,16 @@ class SimulationEngine:
         self.event_bus          = event_bus
         self.scenario_runner    = scenario_runner
         self.metrics_collector  = metrics_collector
+        self.consumption_rate   = consumption_rate
         self.tick               = 0
         self._total_ticks       = 0
         self.price_history: list[float] = list(initial_price_history or [])
         self._agent_map: dict[str, Agent] = {a.agent_id: a for a in agents}
+
+        # Apply a uniform survival consumption rate to every agent (opt-in)
+        if consumption_rate > 0:
+            for agent in agents:
+                agent.consumption_rate = consumption_rate
 
         if self.price_history:
             self.order_book.last_price = self.price_history[-1]
@@ -121,7 +128,16 @@ class SimulationEngine:
         # Phase 2: Regular order-book market
         for agent in self.agents:
             thoughts = agent.think(state)
-            orders   = agent.act(state)
+            orders   = list(agent.act(state))
+            # Survival pressure: starving agents bid above market to restock
+            if self.consumption_rate > 0:
+                survival = agent.survival_order(state)
+                if survival is not None:
+                    orders.append(survival)
+                    thoughts = list(thoughts) + [
+                        f"SURVIVAL: runway {agent.runway():.1f} ticks -- "
+                        f"bidding {survival.quantity} @ ${survival.price:.2f} to avoid starvation"
+                    ]
             self.logger.log_thought(self.tick, agent.agent_id, thoughts, orders)
             for order in orders:
                 self.order_book.add_order(order)
@@ -135,6 +151,10 @@ class SimulationEngine:
             self.price_history.append(trades[-1].price)
             for trade in trades:
                 self.logger.log_trade(trade)
+
+        # Phase 3: Consumption — every agent burns its survival ration
+        if self.consumption_rate > 0:
+            self._run_consumption()
 
         tick_volume = sum(t.quantity for t in tick_trades)
 
@@ -175,6 +195,17 @@ class SimulationEngine:
             ask_depth=self.order_book.ask_depth(),
             price_history=self.price_history.copy(),
         )
+
+    def _run_consumption(self):
+        """Every agent burns its survival ration. Logs total consumed + who starved."""
+        total_consumed = 0.0
+        starving: list[str] = []
+        for agent in self.agents:
+            consumed, starved = agent.consume()
+            total_consumed += consumed
+            if starved:
+                starving.append(agent.agent_id)
+        self.logger.log_consumption(self.tick, total_consumed, starving)
 
     def _settle(self, trades: list[Trade], haggle: bool = False):
         for trade in trades:
