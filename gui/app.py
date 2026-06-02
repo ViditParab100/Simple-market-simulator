@@ -96,6 +96,14 @@ _CONSUME_OPTIONS = [
     ("Consume: High (6/tick)", "6"),
 ]
 
+# Wage paid by the Producer to each worker per tick — recirculates cash so
+# consumers stay solvent instead of going broke and starving.
+_SALARY_OPTIONS = [
+    ("Salary: Off",        "0"),
+    ("Salary: $10/tick",   "10"),
+    ("Salary: $20/tick",   "20"),
+]
+
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -237,7 +245,8 @@ class SimulatorApp(App):
 
     def __init__(self, sim_mode: str = "zoo", scenario: str = "none",
                  ticks: int = 20, speed: str = "normal",
-                 haggle: bool = False, consumption: float = 6.0):
+                 haggle: bool = False, consumption: float = 6.0,
+                 salary: float = 10.0):
         super().__init__()
         self._sim_mode    = sim_mode
         self._scenario    = scenario
@@ -245,6 +254,7 @@ class SimulatorApp(App):
         self._speed       = speed
         self._haggle      = haggle
         self._consumption = consumption   # GUI defaults to High so survival is visible
+        self._salary      = salary        # GUI defaults to On so recirculation is visible
 
         # Engine + GUI bridge
         self._engine:    Optional[SimulationEngine] = None
@@ -268,6 +278,10 @@ class SimulatorApp(App):
         v = str(int(self._consumption))
         return v if v in {"0", "2", "4", "6"} else "6"
 
+    def _salary_value(self) -> str:
+        v = str(int(self._salary))
+        return v if v in {"0", "10", "20"} else "10"
+
     # ── Compose ───────────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
@@ -282,6 +296,7 @@ class SimulatorApp(App):
                 yield Select(_SCENARIO_OPTIONS, id="sel-scenario",  value=self._scenario or "none")
                 yield Select(_SPEED_OPTIONS,    id="sel-speed",     value=self._speed)
                 yield Select(_CONSUME_OPTIONS,  id="sel-consume",   value=self._consume_value())
+                yield Select(_SALARY_OPTIONS,   id="sel-salary",    value=self._salary_value())
 
                 yield Label("", id="lbl-sep")
                 yield Button("START",  id="btn-start",  variant="success")
@@ -368,6 +383,9 @@ class SimulatorApp(App):
         lg.on_consumption = lambda tick, total, starving: \
             self.call_from_thread(self._show_consumption, tick, total, starving)
 
+        lg.on_payroll = lambda tick, wage, n: \
+            self.call_from_thread(self._show_payroll, tick, wage, n)
+
         lg.on_death = lambda agent_id, tick: \
             self.call_from_thread(self._show_death, agent_id, tick)
 
@@ -417,6 +435,7 @@ class SimulatorApp(App):
             scenario_runner=scenario,
             metrics_collector=MetricsCollector(),
             consumption_rate=self._consumption,
+            salary=self._salary,
         )
 
         self._prices = list(seed_history or [20.0])
@@ -491,6 +510,7 @@ class SimulatorApp(App):
     @on(Select.Changed, "#sel-scenario")
     @on(Select.Changed, "#sel-speed")
     @on(Select.Changed, "#sel-consume")
+    @on(Select.Changed, "#sel-salary")
     async def on_select_changed(self, event: Select.Changed):
         if not self._ui_ready or event.value is None or event.value == Select.BLANK:
             return
@@ -499,6 +519,10 @@ class SimulatorApp(App):
             self._update_speed_label()
         elif event.select.id == "sel-consume":
             self._consumption = float(event.value)
+            if not self.sim_running:
+                await self._reset()
+        elif event.select.id == "sel-salary":
+            self._salary = float(event.value)
             if not self.sim_running:
                 await self._reset()
         else:
@@ -715,6 +739,12 @@ class SimulatorApp(App):
             msg += f"  [bold red](STARVING: {', '.join(starving)})[/bold red]"
         self.query_one("#console-log", RichLog).write(msg)
 
+    def _show_payroll(self, tick: int, wage: float, num_workers: int):
+        self.query_one("#console-log", RichLog).write(
+            f"[dim]\\[{tick:02d}][/dim] [cyan]PAYROLL[/cyan]   "
+            f"${wage:.2f} to each of {num_workers} worker(s)"
+        )
+
     def _show_death(self, agent_id: str, tick: int):
         self.query_one("#console-log", RichLog).write(
             f"[dim]\\[{tick:02d}][/dim] [bold red]DEATH[/bold red]     "
@@ -806,7 +836,7 @@ class SimulatorApp(App):
 
 def launch(sim_mode: str = "zoo", scenario: str = "none",
            ticks: int = 20, speed: str = "normal", haggle: bool = False,
-           consumption: float = 0.0):
+           consumption: float = 6.0, salary: float = 10.0):
     app = SimulatorApp(
         sim_mode=sim_mode,
         scenario=scenario,
@@ -814,5 +844,6 @@ def launch(sim_mode: str = "zoo", scenario: str = "none",
         speed=speed,
         haggle=haggle,
         consumption=consumption,
+        salary=salary,
     )
     app.run()

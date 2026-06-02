@@ -124,6 +124,7 @@ class RunMetrics:
     total_starvation:  int   = 0
     deaths:            int   = 0
     survivors:         int   = 0
+    total_wages:       float = 0.0
 
     # Per-agent
     agents: list[AgentSummary] = field(default_factory=list)
@@ -212,5 +213,6 @@ class MetricsCollector:
             total_starvation = sum(s.starved_ticks for s in agent_sums),
             deaths           = sum(1 for s in agent_sums if not s.alive),
             survivors        = sum(1 for s in agent_sums if s.alive),
+            total_wages      = sum(getattr(a, "wages_received", 0.0) for a in agents),
             agents           = agent_sums,
         )

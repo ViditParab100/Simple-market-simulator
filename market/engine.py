@@ -23,6 +23,7 @@ class SimulationEngine:
         scenario_runner:       ScenarioRunner    | None = None,
         metrics_collector:     MetricsCollector  | None = None,
         consumption_rate:      float                    = 0.0,
+        salary:                float                    = 0.0,
     ):
         self.agents             = agents
         self.order_book         = OrderBook()
@@ -32,6 +33,7 @@ class SimulationEngine:
         self.scenario_runner    = scenario_runner
         self.metrics_collector  = metrics_collector
         self.consumption_rate   = consumption_rate
+        self.salary             = salary
         self.tick               = 0
         self._total_ticks       = 0
         self.price_history: list[float] = list(initial_price_history or [])
@@ -101,6 +103,10 @@ class SimulationEngine:
 
         # Phase -1: Production — producers mint new supply into the market
         self._run_production()
+
+        # Phase -0.5: Payroll — employers pay wages so workers stay solvent
+        if self.salary > 0:
+            self._run_payroll()
 
         state = self._build_market_state()
 
@@ -210,6 +216,40 @@ class SimulationEngine:
                 total_produced += agent.produce()
         if total_produced > 0:
             self.logger.log_production(self.tick, total_produced)
+
+    def _run_payroll(self):
+        """
+        Employers pay each living worker a wage, recirculating cash so workers
+        can keep buying food. If employers can't cover the full wage bill, the
+        affordable amount is split evenly and drawn from employers in proportion
+        to their cash.
+        """
+        employers = [a for a in self.agents if a.alive and a.is_employer]
+        workers   = [a for a in self.agents if a.alive and not a.is_employer]
+        if not employers or not workers:
+            return
+
+        pool = sum(e.cash for e in employers)
+        if pool <= 0:
+            return
+
+        wage_bill = self.salary * len(workers)
+        payable   = min(wage_bill, pool)
+        wage      = payable / len(workers)
+        if wage <= 0:
+            return
+
+        # Draw the total from employers in proportion to their cash
+        total_paid = wage * len(workers)
+        for e in employers:
+            share = (e.cash / pool) * total_paid
+            e.cash       -= share
+            e.wages_paid += share
+        for w in workers:
+            w.cash           += wage
+            w.wages_received += wage
+
+        self.logger.log_payroll(self.tick, wage, len(workers))
 
     def _run_consumption(self):
         """

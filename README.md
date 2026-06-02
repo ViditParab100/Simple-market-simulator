@@ -107,7 +107,18 @@ Two simulations are available:
 - [x] CLI `--consume RATE`; GUI gains a **Consume** dropdown (Off / Low / Med / High) defaulting to **High** so survival dynamics are visible immediately
 - [x] 41 new tests (consumption + death + producer) — 376 total, all passing
 
-> **Emergent result:** Under heavy consumption with a single under-producing supplier, the market becomes a survival contest. Agents that lose the bidding war for food starve and die off one by one, while the monopoly Producer absorbs nearly all the cash (Gini → ~0.8) and ends as the lone survivor. Tune `--consume` and `production_rate` to shift between sustainable equilibrium and total die-off — and **salaries / cash recirculation** are the natural next step to keep consumers solvent.
+> **Emergent result:** Under heavy consumption with a single under-producing supplier, the market becomes a survival contest. Agents that lose the bidding war for food starve and die off one by one, while the monopoly Producer absorbs nearly all the cash (Gini → ~0.8) and ends as the lone survivor. Tune `--consume` and `production_rate` to shift between sustainable equilibrium and total die-off.
+
+### Phase 8 — Salaries / Cash Recirculation ✅
+- [x] **Payroll** — employers (the Producer) pay each living worker a wage every tick (`--salary WAGE`), recirculating the cash the Producer extracts through sales. Closes the loop: sell food → earn cash → pay wages → workers buy food.
+- [x] If employers can't cover the full wage bill, the affordable amount is split evenly and drawn from employers in proportion to their cash; **cash is conserved** (a pure transfer)
+- [x] `is_employer` flag on agents (Producer sets it); dead workers aren't paid
+- [x] Engine gains a payroll phase (start of tick, after production); logged inline as `$ PAYROLL`
+- [x] Metrics report total wages paid; per-agent `wages_received` / `wages_paid` tracked
+- [x] CLI `--salary WAGE`; GUI gains a **Salary** dropdown (Off / $10 / $20) defaulting to **On**
+- [x] 10 new tests (transfer, conservation, employer-cash cap, dead-worker exclusion, death reduction) — 386 total, all passing
+
+> **Emergent result:** Recirculation visibly keeps workers alive. At moderate consumption (`--consume 2 --salary 15`), deaths drop from **4 → 2** (survivors 2 → 4) versus no salary. Under *heavy* consumption, survival bidding drives runaway price inflation that still outruns fixed wages — so the next lever for a true steady state is **anchoring the Producer's price** so inflation can't outpace pay.
 
 ---
 
@@ -307,8 +318,9 @@ Simple-market-simulator/
     +-- test_events.py             # Schema, bus routing, audit, anomaly detection
     +-- test_metrics.py            # gini, volatility, drawdown, MetricsCollector
     +-- test_scenarios.py          # ScenarioRunner, all actions, predefined scenarios
-    +-- test_consumption.py        # consume(), runway(), survival_order(), engine
-    +-- test_producer.py           # ProducerAgent mint/sell + market sustainability
+    +-- test_consumption.py        # consume(), runway(), survival_order(), death streak
+    +-- test_producer.py           # ProducerAgent mint/sell/reserve + sustainability
+    +-- test_salary.py             # payroll transfer, conservation, death reduction
     +-- test_hybrid/
         +-- test_activation.py     # All 5 activation signal functions
         +-- test_mood.py           # All 4 mood modifier types
@@ -348,8 +360,11 @@ python main.py --sim zoo --ticks 50 --events
 python main.py --sim hybrid --ticks 100 --events --audit audit.jsonl
 
 # Survival economy: agents consume each tick, the Producer supplies the market
-python main.py --sim zoo --ticks 20 --consume 3 --metrics --quiet
-python main.py --sim zoo --ticks 30 --consume 3 --events     # show liquidity-drain anomalies
+python main.py --sim zoo --ticks 20 --consume 4 --metrics --quiet
+python main.py --sim zoo --ticks 30 --consume 4 --events            # show liquidity-drain anomalies
+
+# Cash recirculation: the Producer pays wages so workers stay solvent
+python main.py --sim zoo --ticks 20 --consume 2 --salary 15 --metrics --quiet
 
 # Stress-test with a named scenario
 python main.py --sim zoo --ticks 25 --scenario panic_cascade --events --metrics --quiet
@@ -366,7 +381,7 @@ python main.py --gui --sim hybrid --ticks 20 --haggle
 python main.py --gui --sim zoo --ticks 25 --scenario panic_cascade
 python main.py --gui --sim hybrid --ticks 30 --scenario speculator_bubble --haggle
 
-# Run all 376 tests
+# Run all 386 tests
 python -m pytest tests/ -v
 ```
 
@@ -390,6 +405,7 @@ python -m pytest tests/ -v
 | `--metrics` | flag | Show run metrics summary + per-agent PnL at end |
 | `--scenario` | `hoarding_crash` `panic_cascade` `speculator_bubble` | Inject a named stress-test scenario |
 | `--consume` | float (e.g. `4`) | Per-tick survival consumption rate for every agent; drives survival bidding and starvation/death. CLI default off; GUI defaults to High |
+| `--salary` | float (e.g. `10`) | Wage the Producer pays each worker per tick; recirculates cash. CLI default off; GUI defaults to On |
 | `--gui` | flag | Launch the interactive Textual TUI instead of CLI output |
 
 ### GUI keyboard shortcuts
@@ -415,4 +431,4 @@ Speed can also be changed live from the dropdown in the control panel. The five 
 | Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
 | CLI output | `rich` (terminal panels, tables, colour) |
 | Interactive GUI | `textual` (Textual TUI — 4-panel live layout, worker thread) |
-| Testing | `pytest` — 376 tests across 16 files |
+| Testing | `pytest` — 386 tests across 17 files |

@@ -29,6 +29,11 @@ class Agent(ABC):
         # ── Production (only ProducerAgent overrides this) ─────────────────
         self.produced_total: float = 0.0       # lifetime units minted into the market
 
+        # ── Salaries / cash recirculation ─────────────────────────────────
+        self.is_employer: bool = False         # employers pay wages to workers
+        self.wages_received: float = 0.0       # lifetime wages received (workers)
+        self.wages_paid: float = 0.0           # lifetime wages paid (employers)
+
     @abstractmethod
     def think(self, state: MarketState) -> list[str]:
         """Return lines of internal reasoning. Runs before act() each tick."""
