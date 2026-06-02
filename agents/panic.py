@@ -75,6 +75,11 @@ class PanicAgent(Agent):
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
 
+    def trade_remark(self, role: str, price: float, qty: int) -> str:
+        if role == "buyer":
+            return f"Had to grab {qty} @ ${price:.2f} — can't risk running out!"
+        return f"Get me out! Dumped {qty} @ ${price:.2f}, take it, take it!"
+
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         if self._state != "calm" or self.inventory <= 0:
             return None

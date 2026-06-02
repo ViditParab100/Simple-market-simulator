@@ -118,7 +118,18 @@ Two simulations are available:
 - [x] CLI `--salary WAGE`; GUI gains a **Salary** dropdown (Off / $10 / $20) defaulting to **On**
 - [x] 10 new tests (transfer, conservation, employer-cash cap, dead-worker exclusion, death reduction) — 386 total, all passing
 
-> **Emergent result:** Recirculation visibly keeps workers alive. At moderate consumption (`--consume 2 --salary 15`), deaths drop from **4 → 2** (survivors 2 → 4) versus no salary. Under *heavy* consumption, survival bidding drives runaway price inflation that still outruns fixed wages — so the next lever for a true steady state is **anchoring the Producer's price** so inflation can't outpace pay.
+> **Emergent result:** Recirculation visibly keeps workers alive. At moderate consumption (`--consume 2 --salary 15`), deaths drop from **4 → 2** (survivors 2 → 4) versus no salary. Under *heavy* consumption, survival bidding drives runaway price inflation that still outruns fixed wages — so the next lever (Phase 9) anchors the Producer's price.
+
+### Phase 9 — Price Anchoring & Trade Talk ✅
+- [x] **Cost-plus price anchor** — the Producer now sells at `base_cost × (1 + margin)` (a stable ~$21), *not* "just below the last trade". Chasing the last price created a runaway loop with desperate survival bids; anchoring breaks it. Survival bids also reference the current **best ask** instead of the (runaway) last price.
+- [x] **Inflation tamed** — the same heavy run that previously spiralled to **$50 (+121%)** now holds at **~$24 (+8%)**.
+- [x] **Sustainable equilibrium reachable** — with the anchor plus a living wage (`--consume 3 --salary 70`), the economy reaches a true steady state: **0 deaths, stable price ~$21, indefinitely**. The balance rule is simply *wage ≈ ration × price*.
+- [x] **Trade Talk** — each agent now "speaks" a short, archetype-flavoured line when it trades (Speculator: *"Riding the momentum — to the moon!"*; Panic: *"Get me out!"*; Hoarder: *"Mine now."*; Rational: *"below fair value — patience pays."*). HybridNPCs speak in their dominant archetype's voice.
+- [x] GUI gains a dedicated **Trade Talk** panel (bottom-right, beside the Console Log); the CLI prints the dialogue inline under each trade
+- [x] GUI **Salary** dropdown now offers Off / $30 / $70 (living wage), defaulting to a mostly-sustainable Med-consume + living-wage config
+- [x] 3 new tests (anchor pricing, anchor ignores frenzy, inflation tamed) — 389 total, all passing
+
+> **The complete loop:** Producer mints supply at a stable cost-plus price → sells it → pays wages → workers buy food → survive. Anchoring stops inflation; salaries stop cash starvation. Together they turn the doomed survival economy into a sustainable one — and you can still break it by cranking `--consume` past what wages can cover.
 
 ---
 
@@ -366,6 +377,9 @@ python main.py --sim zoo --ticks 30 --consume 4 --events            # show liqui
 # Cash recirculation: the Producer pays wages so workers stay solvent
 python main.py --sim zoo --ticks 20 --consume 2 --salary 15 --metrics --quiet
 
+# Sustainable steady state: anchored price + living wage => nobody dies
+python main.py --sim zoo --ticks 25 --consume 3 --salary 70 --metrics --quiet
+
 # Stress-test with a named scenario
 python main.py --sim zoo --ticks 25 --scenario panic_cascade --events --metrics --quiet
 python main.py --sim zoo --ticks 25 --scenario hoarding_crash --metrics --quiet
@@ -381,7 +395,7 @@ python main.py --gui --sim hybrid --ticks 20 --haggle
 python main.py --gui --sim zoo --ticks 25 --scenario panic_cascade
 python main.py --gui --sim hybrid --ticks 30 --scenario speculator_bubble --haggle
 
-# Run all 386 tests
+# Run all 389 tests
 python -m pytest tests/ -v
 ```
 
@@ -431,4 +445,4 @@ Speed can also be changed live from the dropdown in the control panel. The five 
 | Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
 | CLI output | `rich` (terminal panels, tables, colour) |
 | Interactive GUI | `textual` (Textual TUI — 4-panel live layout, worker thread) |
-| Testing | `pytest` — 386 tests across 17 files |
+| Testing | `pytest` — 389 tests across 17 files |

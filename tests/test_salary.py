@@ -55,7 +55,7 @@ def test_payroll_transfers_cash_employer_to_workers():
 
 def test_payroll_conserves_cash():
     """Wages move cash between agents; they don't create or destroy it."""
-    p  = ProducerAgent("P", inventory=12, cash=1000.0, production_rate=0, sell_discount=0.98)
+    p  = ProducerAgent("P", inventory=12, cash=1000.0, production_rate=0)
     w1 = StubAgent("w1", inventory=5, cash=100.0)
     w2 = StubAgent("w2", inventory=5, cash=100.0)
     agents = [p, w1, w2]

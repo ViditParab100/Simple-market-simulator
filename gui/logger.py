@@ -27,6 +27,7 @@ class GUILogger:
         self.on_consumption:  Optional[Callable] = None
         self.on_payroll:      Optional[Callable] = None
         self.on_death:        Optional[Callable] = None
+        self.on_trade_talk:   Optional[Callable] = None
         self.on_final_state:  Optional[Callable] = None
         self.on_metrics:      Optional[Callable] = None
 
@@ -81,6 +82,10 @@ class GUILogger:
     def log_death(self, agent_id: str, tick: int):
         if self.on_death:
             self.on_death(agent_id, tick)
+
+    def log_trade_talk(self, tick: int, trade, talk: list):
+        if self.on_trade_talk:
+            self.on_trade_talk(tick, trade, talk)
 
     def log_final_state(self, agents: list[Agent], last_price: Optional[float]):
         if self.on_final_state:

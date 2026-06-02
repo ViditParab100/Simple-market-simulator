@@ -77,6 +77,11 @@ class SpeculatorAgent(Agent):
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
 
+    def trade_remark(self, role: str, price: float, qty: int) -> str:
+        if role == "buyer":
+            return f"Riding the momentum — long {qty} @ ${price:.2f}. To the moon!"
+        return f"Taking profits on {qty} @ ${price:.2f}. Trend's turning."
+
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         if len(state.price_history) < 2:
             return None
