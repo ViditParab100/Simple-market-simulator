@@ -37,6 +37,7 @@ from agents.speculator import SpeculatorAgent
 from agents.hoarder import HoarderAgent
 from agents.panic import PanicAgent
 from agents.rational import RationalAgent
+from agents.producer import ProducerAgent
 from agents.hybrid.roster import build_roster
 from agents.random_agent import RandomAgent
 
@@ -347,6 +348,9 @@ class SimulatorApp(App):
         lg.on_anomaly = lambda desc, tick: \
             self.call_from_thread(self._show_anomaly, desc, tick)
 
+        lg.on_production = lambda tick, total: \
+            self.call_from_thread(self._show_production, tick, total)
+
         lg.on_consumption = lambda tick, total, starving: \
             self.call_from_thread(self._show_consumption, tick, total, starving)
 
@@ -434,13 +438,15 @@ class SimulatorApp(App):
                             seed=42 + i)
                 for i in range(4)
             ]
-        # Default: zoo
+        # Default: zoo — consumers start on bare-minimum inventory and depend
+        # on the Producer for supply.
         return [
-            MarketMakerAgent("MarketMaker", inventory=30, cash=800.0),
-            SpeculatorAgent("Speculator",   inventory=10, cash=600.0),
-            HoarderAgent("Hoarder",         inventory=20, cash=1000.0, hoard_target=60),
-            PanicAgent("Panic",             inventory=40, cash=300.0),
-            RationalAgent("Rational",       inventory=25, cash=500.0),
+            ProducerAgent("Producer",    inventory=10, cash=200.0, production_rate=10),
+            MarketMakerAgent("MarketMaker", inventory=5, cash=800.0),
+            SpeculatorAgent("Speculator",   inventory=4, cash=600.0),
+            HoarderAgent("Hoarder",         inventory=4, cash=1000.0, hoard_target=60),
+            PanicAgent("Panic",             inventory=6, cash=300.0),
+            RationalAgent("Rational",       inventory=5, cash=500.0),
         ]
 
     # ── Button / Select handlers ───────────────────────────────────────────────
@@ -673,6 +679,11 @@ class SimulatorApp(App):
     def _show_anomaly(self, description: str, tick: int):
         self.query_one("#console-log", RichLog).write(
             f"[dim]\\[{tick:02d}][/dim] [bold red]ANOMALY[/bold red]   {description}"
+        )
+
+    def _show_production(self, tick: int, total_produced: float):
+        self.query_one("#console-log", RichLog).write(
+            f"[dim]\\[{tick:02d}][/dim] [green]PRODUCED[/green]  {total_produced:.0f} units into the market"
         )
 
     def _show_consumption(self, tick: int, total_consumed: float, starving: list):

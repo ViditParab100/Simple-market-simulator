@@ -10,16 +10,24 @@ from __future__ import annotations
 from .activation import ArchetypeTag
 from .personality import PersonalityProfile
 from .npc import HybridNPC
+from agents.producer import ProducerAgent
 
 
-def build_roster(seed_price: float = 20.0) -> list[HybridNPC]:
-    """Return the default cast of Hybrid NPCs for --sim hybrid."""
+def build_roster(seed_price: float = 20.0) -> list:
+    """
+    Return the default cast for --sim hybrid: one Producer (supply) plus five
+    mixed-personality NPCs that start on bare-minimum inventory and depend on
+    the Producer for supply.
+    """
     return [
+        # Producer: the supply side — mints fresh units every tick.
+        ProducerAgent("Producer", inventory=10, cash=200.0, production_rate=10),
+
         # Iris: fundamentals-first with a speculative streak
         # Usually calm and rational, but chases momentum when it's strong enough
         HybridNPC(
             agent_id="Iris",
-            inventory=25,
+            inventory=6,
             cash=600.0,
             profile=PersonalityProfile({
                 ArchetypeTag.RATIONAL:     0.50,
@@ -32,7 +40,7 @@ def build_roster(seed_price: float = 20.0) -> list[HybridNPC]:
         # Steady buyer in thin markets; pivots to market-making when inventory is full
         HybridNPC(
             agent_id="Marcus",
-            inventory=15,
+            inventory=5,
             cash=900.0,
             profile=PersonalityProfile({
                 ArchetypeTag.HOARDER:      0.60,
@@ -44,7 +52,7 @@ def build_roster(seed_price: float = 20.0) -> list[HybridNPC]:
         # Amplifies trends in both directions; most likely to trigger a cascade
         HybridNPC(
             agent_id="Dex",
-            inventory=10,
+            inventory=4,
             cash=400.0,
             profile=PersonalityProfile({
                 ArchetypeTag.SPECULATOR:   0.45,
@@ -57,7 +65,7 @@ def build_roster(seed_price: float = 20.0) -> list[HybridNPC]:
         # Normally stabilising; can flip to hoarder behaviour during supply shocks
         HybridNPC(
             agent_id="Vera",
-            inventory=35,
+            inventory=6,
             cash=700.0,
             profile=PersonalityProfile({
                 ArchetypeTag.MARKET_MAKER: 0.55,
@@ -70,7 +78,7 @@ def build_roster(seed_price: float = 20.0) -> list[HybridNPC]:
         # Creates scarcity in calm markets, then dumps everything in a crash
         HybridNPC(
             agent_id="Rex",
-            inventory=20,
+            inventory=5,
             cash=500.0,
             profile=PersonalityProfile({
                 ArchetypeTag.HOARDER:      0.50,

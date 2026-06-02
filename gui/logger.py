@@ -23,6 +23,7 @@ class GUILogger:
         self.on_haggle:       Optional[Callable] = None
         self.on_scenario:     Optional[Callable] = None
         self.on_anomaly:      Optional[Callable] = None
+        self.on_production:   Optional[Callable] = None
         self.on_consumption:  Optional[Callable] = None
         self.on_final_state:  Optional[Callable] = None
         self.on_metrics:      Optional[Callable] = None
@@ -62,6 +63,10 @@ class GUILogger:
     def log_anomaly(self, description: str, tick: int):
         if self.on_anomaly:
             self.on_anomaly(description, tick)
+
+    def log_production(self, tick: int, total_produced: float):
+        if self.on_production:
+            self.on_production(tick, total_produced)
 
     def log_consumption(self, tick: int, total_consumed: float, starving: list[str]):
         if self.on_consumption:

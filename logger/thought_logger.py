@@ -58,6 +58,11 @@ class ThoughtLogger:
         console.print(thought_lines)
         console.print(order_block)
 
+    def log_production(self, tick: int, total_produced: float):
+        if not self.verbose:
+            return
+        console.print(f"\n  [bold green]+ PRODUCED[/bold green] {total_produced:.0f} units into the market")
+
     def log_consumption(self, tick: int, total_consumed: float, starving: list[str]):
         if not self.verbose:
             return

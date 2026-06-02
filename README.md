@@ -96,6 +96,18 @@ Two simulations are available:
 - [x] Keyboard shortcuts: `Space` start/pause, `S` step one tick, `R` reset, `+`/`-` faster/slower, `Q` quit (all priority bindings, so they work regardless of widget focus)
 - [x] `--gui` CLI flag launches the TUI; all other flags (`--sim`, `--ticks`, `--haggle`, `--scenario`) carry over
 
+### Phase 7 — Consumption, Survival & Production ✅
+- [x] **Consumption** — every agent burns a survival ration of the commodity each tick (`--consume RATE`). Inventory is no longer static; it depletes unless replenished.
+- [x] **Survival pressure** — when an agent's runway (inventory ÷ consumption) drops below a threshold it bids *above* market to restock, escalating the closer it gets to starvation. This is what keeps an otherwise-frozen market liquid, and it produces scarcity-driven price spikes.
+- [x] **Starvation tracking** — agents that can't cover their ration log a starved tick; surfaced in metrics.
+- [x] **`ProducerAgent`** — the supply side. Mints `production_rate` units each tick and offers its whole stock just below market so it reliably clears. Without it, a consuming economy depletes to zero and everyone starves; with it, supply is continuously replenished.
+- [x] Consumers now start on **bare-minimum inventory** and depend on the Producer for supply
+- [x] Engine gains a production phase (start of tick) and a consumption phase (end of tick); both logged inline (`+ PRODUCED`, `~ CONSUMED`, with `STARVING` callouts)
+- [x] Metrics extended with total consumed, total starvation ticks, and per-agent consumed / starved columns
+- [x] 35 new tests (consumption + producer) — 370 total, all passing
+
+> **Emergent result:** A single monopoly Producer in a survival economy extracts consumer surplus fast — price runs up, the Producer accumulates the cash, consumers are gradually impoverished, and the market eventually freezes again through *cash exhaustion* (a different failure mode from the price standstill). Tune `--consume`, `production_rate`, and starting cash to find a balance — or recirculate the Producer's cash (a natural next step) for a true steady state.
+
 ---
 
 ## Simulation 2 — Hybrid NPC Market
@@ -267,6 +279,7 @@ Simple-market-simulator/
 |   +-- hoarder.py                 # Sim 1 archetype
 |   +-- panic.py                   # Sim 1 archetype
 |   +-- rational.py                # Sim 1 archetype
+|   +-- producer.py                # Supply-side agent (mints + sells stock)
 |   +-- hybrid/
 |       +-- activation.py          # Per-archetype activation signal functions (0-1)
 |       +-- mood.py                # Streak, volatility, cash, contagion modifiers
@@ -293,6 +306,8 @@ Simple-market-simulator/
     +-- test_events.py             # Schema, bus routing, audit, anomaly detection
     +-- test_metrics.py            # gini, volatility, drawdown, MetricsCollector
     +-- test_scenarios.py          # ScenarioRunner, all actions, predefined scenarios
+    +-- test_consumption.py        # consume(), runway(), survival_order(), engine
+    +-- test_producer.py           # ProducerAgent mint/sell + market sustainability
     +-- test_hybrid/
         +-- test_activation.py     # All 5 activation signal functions
         +-- test_mood.py           # All 4 mood modifier types
@@ -331,6 +346,10 @@ python main.py --sim zoo --ticks 50 --events
 # Write full JSONL audit trail to disk
 python main.py --sim hybrid --ticks 100 --events --audit audit.jsonl
 
+# Survival economy: agents consume each tick, the Producer supplies the market
+python main.py --sim zoo --ticks 20 --consume 3 --metrics --quiet
+python main.py --sim zoo --ticks 30 --consume 3 --events     # show liquidity-drain anomalies
+
 # Stress-test with a named scenario
 python main.py --sim zoo --ticks 25 --scenario panic_cascade --events --metrics --quiet
 python main.py --sim zoo --ticks 25 --scenario hoarding_crash --metrics --quiet
@@ -346,7 +365,7 @@ python main.py --gui --sim hybrid --ticks 20 --haggle
 python main.py --gui --sim zoo --ticks 25 --scenario panic_cascade
 python main.py --gui --sim hybrid --ticks 30 --scenario speculator_bubble --haggle
 
-# Run all 335 tests
+# Run all 370 tests
 python -m pytest tests/ -v
 ```
 
@@ -369,6 +388,7 @@ python -m pytest tests/ -v
 | `--audit` | file path | Write JSONL audit trail to disk (requires `--events`) |
 | `--metrics` | flag | Show run metrics summary + per-agent PnL at end |
 | `--scenario` | `hoarding_crash` `panic_cascade` `speculator_bubble` | Inject a named stress-test scenario |
+| `--consume` | float (e.g. `3`) | Per-tick survival consumption rate for every agent; drives survival bidding |
 | `--gui` | flag | Launch the interactive Textual TUI instead of CLI output |
 
 ### GUI keyboard shortcuts
@@ -394,4 +414,4 @@ Speed can also be changed live from the dropdown in the control panel. The five 
 | Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
 | CLI output | `rich` (terminal panels, tables, colour) |
 | Interactive GUI | `textual` (Textual TUI — 4-panel live layout, worker thread) |
-| Testing | `pytest` — 335 tests across 14 files |
+| Testing | `pytest` — 370 tests across 16 files |

@@ -20,6 +20,9 @@ class Agent(ABC):
         self.consumed_total: float = 0.0       # lifetime units consumed
         self.starved_ticks: int = 0            # ticks where ration couldn't be met
 
+        # ── Production (only ProducerAgent overrides this) ─────────────────
+        self.produced_total: float = 0.0       # lifetime units minted into the market
+
     @abstractmethod
     def think(self, state: MarketState) -> list[str]:
         """Return lines of internal reasoning. Runs before act() each tick."""
@@ -71,6 +74,14 @@ class Agent(ABC):
         if self.consumption_rate <= 0:
             return float("inf")
         return self.inventory / self.consumption_rate
+
+    def produce(self) -> float:
+        """
+        Mint new units into the agent's inventory. Base agents produce nothing;
+        only ProducerAgent overrides this. Called by the engine each tick.
+        Returns units produced.
+        """
+        return 0.0
 
     def survival_order(self, state: MarketState) -> Order | None:
         """

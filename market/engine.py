@@ -93,12 +93,16 @@ class SimulationEngine:
 
     def _execute_tick(self):
         self.tick += 1
-        state = self._build_market_state()
         self.order_book.clear()
         self._clear_contagion()
         tick_trades: list[Trade] = []
 
         self.logger.log_tick_start(self.tick)
+
+        # Phase -1: Production — producers mint new supply into the market
+        self._run_production()
+
+        state = self._build_market_state()
 
         # Phase 0: Scenario interventions
         if self.scenario_runner:
@@ -195,6 +199,14 @@ class SimulationEngine:
             ask_depth=self.order_book.ask_depth(),
             price_history=self.price_history.copy(),
         )
+
+    def _run_production(self):
+        """Producers mint new supply. Logs total produced if anything was made."""
+        total_produced = 0.0
+        for agent in self.agents:
+            total_produced += agent.produce()
+        if total_produced > 0:
+            self.logger.log_production(self.tick, total_produced)
 
     def _run_consumption(self):
         """Every agent burns its survival ration. Logs total consumed + who starved."""
