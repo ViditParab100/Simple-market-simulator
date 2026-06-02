@@ -22,7 +22,7 @@ class ProducerAgent(Agent):
         agent_id: str,
         inventory: int,
         cash: float,
-        production_rate: int = 20,
+        production_rate: int = 25,
         sell_discount: float = 0.98,   # ask just below market to ensure fills
         floor_price: float = 1.0,      # never sell below this
     ):
@@ -30,6 +30,7 @@ class ProducerAgent(Agent):
         self.production_rate = production_rate
         self.sell_discount   = sell_discount
         self.floor_price     = floor_price
+        self.is_employer     = True    # pays wages to the other agents
         self._pending_orders: list[Order] = []
         self._last_produced: float = 0.0
 

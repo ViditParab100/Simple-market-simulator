@@ -25,6 +25,7 @@ class GUILogger:
         self.on_anomaly:      Optional[Callable] = None
         self.on_production:   Optional[Callable] = None
         self.on_consumption:  Optional[Callable] = None
+        self.on_payroll:      Optional[Callable] = None
         self.on_death:        Optional[Callable] = None
         self.on_final_state:  Optional[Callable] = None
         self.on_metrics:      Optional[Callable] = None
@@ -72,6 +73,10 @@ class GUILogger:
     def log_consumption(self, tick: int, total_consumed: float, starving: list[str]):
         if self.on_consumption:
             self.on_consumption(tick, total_consumed, starving)
+
+    def log_payroll(self, tick: int, wage: float, num_workers: int):
+        if self.on_payroll:
+            self.on_payroll(tick, wage, num_workers)
 
     def log_death(self, agent_id: str, tick: int):
         if self.on_death:

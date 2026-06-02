@@ -72,6 +72,9 @@ def main():
     parser.add_argument("--consume", type=float, default=-1.0, metavar="RATE",
                         help="Per-tick survival consumption rate for every agent (e.g. 4.0). "
                              "Omit for CLI default (off); GUI defaults to High.")
+    parser.add_argument("--salary",  type=float, default=-1.0, metavar="WAGE",
+                        help="Wage the Producer pays each worker per tick (e.g. 10.0). "
+                             "Recirculates cash. Omit for CLI default (off); GUI defaults to On.")
     parser.add_argument("--gui",     action="store_true",
                         help="Launch the interactive Textual GUI")
     args = parser.parse_args()
@@ -84,13 +87,15 @@ def main():
             ticks=args.ticks,
             speed="normal",
             haggle=args.haggle,
-            # explicit --consume overrides; otherwise GUI uses its High default
+            # explicit flags override; otherwise GUI uses its visible defaults
             consumption=args.consume if args.consume >= 0 else 6.0,
+            salary=args.salary if args.salary >= 0 else 10.0,
         )
         return
 
-    # CLI path: consumption off unless explicitly requested
+    # CLI path: consumption / salary off unless explicitly requested
     consume_rate = args.consume if args.consume >= 0 else 0.0
+    salary_rate  = args.salary  if args.salary  >= 0 else 0.0
 
     if args.sim == "hybrid":
         agents       = build_roster()
@@ -128,6 +133,7 @@ def main():
         scenario_runner=scenario,
         metrics_collector=collector,
         consumption_rate=consume_rate,
+        salary=salary_rate,
     )
     engine.run(ticks=args.ticks)
 

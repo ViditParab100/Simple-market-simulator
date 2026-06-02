@@ -63,6 +63,14 @@ class ThoughtLogger:
             return
         console.print(f"\n  [bold green]+ PRODUCED[/bold green] {total_produced:.0f} units into the market")
 
+    def log_payroll(self, tick: int, wage: float, num_workers: int):
+        if not self.verbose:
+            return
+        console.print(
+            f"\n  [bold cyan]$ PAYROLL[/bold cyan] paid ${wage:.2f} to each of "
+            f"{num_workers} worker(s)"
+        )
+
     def log_death(self, agent_id: str, tick: int):
         # Always shown (even in quiet mode) — a death is a major event
         console.print(
@@ -183,6 +191,8 @@ class ThoughtLogger:
             if metrics.deaths > 0:
                 deaths_str = f"[bold red]{metrics.deaths}[/bold red]"
             price_table.add_row("Deaths / survivors", f"{deaths_str} / {metrics.survivors}")
+        if metrics.total_wages > 0:
+            price_table.add_row("Wages paid", f"${metrics.total_wages:.2f}")
         console.print(price_table)
 
         # Per-agent PnL
