@@ -1,0 +1,144 @@
+================================================================================
+Reference for the bullets in pointers.txt. Explains the jargon, what each point
+actually means in the project, and the truth behind every number.
+
+
+--------------------------------------------------------------------------------
+BULLET 1 — THE FOUNDATION
+--------------------------------------------------------------------------------
+"Built a Python agent-based market simulator with 5 trader archetypes on a
+ central limit order book, modeling price discovery, liquidity, and systemic
+ risk across 10 modular subsystems backed by 424 unit tests."
+
+KEY TERMS
+- Agent-based simulation: instead of one big equation, the market emerges from
+  many independent "agents," each making its own decisions. The behavior of the
+  whole system emerges from individuals interacting.
+- Central limit order book (CLOB): the mechanism every stock exchange uses.
+  Buyers post BIDS (price they'll pay), sellers post ASKS (price they'll accept).
+  When a bid >= an ask, they match and a trade happens. (market/order_book.py)
+- 5 trader archetypes: the five personalities — MarketMaker, Speculator, Hoarder,
+  Panic, Rational. (Real: exactly 5 agent classes.)
+- Price discovery: how the market FINDS a price through supply/demand rather than
+  it being set. Our trade price = midpoint of the matched bid and ask.
+- Liquidity: how easily you can trade without moving the price. "Liquidity drain"
+  = nobody left to trade with.
+- Systemic risk: risk to the WHOLE system (a cascade), not just one agent.
+
+THE NUMBERS
+- 10 modular subsystems = the 10 development phases/modules (engine, agents,
+  haggling, events, scenarios, GUI, consumption, salaries, anchoring, LLM).
+- 424 unit tests = exact pytest count. Signals you test your code.
+
+
+--------------------------------------------------------------------------------
+BULLET 2 — THE AGENT DESIGN
+--------------------------------------------------------------------------------
+"Designed autonomous agents with bilateral haggling and mood-driven behavior
+ switching (2-3 blended personas per agent); reproduced market collapses with
+ wealth concentration up to a 0.8 Gini coefficient under stress scenarios."
+
+KEY TERMS
+- Bilateral haggling: "bilateral" = two-party. Before orders hit the open order
+  book, two agents privately NEGOTIATE over several rounds, each conceding a bit
+  toward the other until they meet or walk away. (market/haggle.py)
+- Mood-driven behavior switching: the Hybrid NPCs. Each carries 2-3 personalities
+  (e.g. 50% Rational / 35% Speculator / 15% Panic). Every tick they run an
+  "activation contest": market conditions decide which personality is loudest and
+  takes control. A calm agent can flip to Panic during a crash — like a real
+  trader's mood shifting.
+- Stress scenarios: deliberately injected shocks (price crashes, supply shocks)
+  to test how the market breaks.
+
+THE NUMBER (understand this one well)
+- Gini coefficient: a standard economics measure of inequality, 0 to 1.
+  0 = everyone equal, 1 = one person owns everything. Real-world countries sit
+  around 0.3-0.5.
+- "up to 0.8 Gini": in collapse runs, wealth concentrated so severely (the
+  Producer drained everyone's cash) that inequality hit ~0.8. Computed in
+  market/metrics.py. A quantified way of saying "the simulation reproduced
+  extreme wealth concentration during collapses."
+
+
+--------------------------------------------------------------------------------
+BULLET 3 — THE STRONGEST BULLET (real before/after metrics)
+--------------------------------------------------------------------------------
+"Implemented cost-plus price anchoring and wage-based cash recirculation that
+ cut peak inflation ~93% (+121% to +8%) and halved starvation-driven agent
+ deaths (4 to 2), reaching a sustainable equilibrium."
+
+This is the strongest bullet — it shows a problem you found and fixed, with numbers.
+
+THE STORY
+- The economy was collapsing two ways: (1) runaway inflation — desperate agents
+  bidding higher and higher spiralled prices upward; (2) agents starving — they
+  ran out of cash and couldn't buy food.
+- Cost-plus price anchoring: "cost-plus" is a real pricing strategy: price =
+  production cost + a fixed markup. We made the Producer sell at a STABLE
+  cost-based price instead of chasing the frenzy, which stopped the inflation spiral.
+- Wage-based cash recirculation: the Producer (the employer) pays WAGES back to
+  the other agents each tick. Cash flows in a loop instead of pooling in one
+  place, keeping buyers solvent.
+
+THE NUMBERS (all real, from --metrics runs)
+- Inflation +121% -> +8%: before anchoring, price ran from ~$22 to ~$50 (a 121%
+  rise). After, it held near ~$24 (8% rise). The ~93% is the reduction in that
+  runaway: (121-8)/121 ~= 93%.
+- Deaths 4 -> 2: in a stress config, 4 agents starved without wages; with wages,
+  only 2 did. "Halved."
+- Sustainable equilibrium: at the right balance (--consume 3 --salary 70) we hit
+  0 deaths, stable price forever. The rule: wage ~= ration x price.
+
+HONESTY NOTE: these are SIMULATION outcomes, not production/business metrics.
+If asked, frame it as "in my simulation, these interventions reduced inflation
+93% and halved agent deaths" — accurate and still impressive.
+
+
+--------------------------------------------------------------------------------
+BULLET 4 — THE MODERN / AI ANGLE
+--------------------------------------------------------------------------------
+"Integrated 3 pluggable LLM backends (Ollama / OpenAI / Anthropic) for
+ natural-language agent reasoning with rule-based fallback, plus a real-time
+ terminal dashboard."
+
+KEY TERMS
+- LLM backends: you can plug a real language model in as an agent's "brain." Each
+  tick the agent gets a market snapshot, the model replies with a decision
+  (buy/sell/hold) AND its reasoning in plain English.
+- Pluggable: clean software design — one interface, swappable implementations.
+  You can switch models (or run several at once) without touching the rest of the
+  code. The architecturally impressive part.
+- 3 backends: Ollama (free, runs models locally, no API key), OpenAI (GPT),
+  Anthropic (Claude). (Real: 3 provider classes + a mock for testing.)
+- Rule-based fallback: if the model is down or returns junk, the agent reverts to
+  hand-coded logic so a run never crashes. Shows you think about failure modes.
+- Real-time terminal dashboard: the Textual TUI — a live in-terminal UI showing
+  agents thinking, trading, and "talking" as it runs.
+
+
+--------------------------------------------------------------------------------
+ONE-SENTENCE PITCH
+--------------------------------------------------------------------------------
+"I built an agent-based market simulator where autonomous traders — optionally
+ powered by LLMs — buy, negotiate, consume, and go bankrupt, and I used it to
+ reproduce real economic phenomena like inflation spirals and wealth inequality,
+ then engineered fixes that I could measure."
+
+
+--------------------------------------------------------------------------------
+LIKELY INTERVIEW QUESTIONS
+--------------------------------------------------------------------------------
+1. "What's a Gini coefficient?"
+   -> Inequality measure, 0-1. 0 = perfectly equal, 1 = one owns everything.
+
+2. "How does the order book match trades?"
+   -> Highest bid meets lowest ask; if bid >= ask they trade, at the midpoint price.
+
+3. "Why did inflation run away, and how did anchoring fix it?"
+   -> Desperate survival bids kept lifting the price each tick (a feedback loop);
+      anchoring the seller to a fixed cost-plus price broke the loop.
+
+4. "How do the LLM agents work / what if the API fails?"
+   -> Market snapshot -> prompt -> model returns a JSON decision -> validated
+      against the agent's cash/inventory -> rule-based fallback on any error.
+================================================================================
