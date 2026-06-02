@@ -9,10 +9,11 @@ Model price equilibrium, autonomous haggling, systemic liquidity risk, and a ful
 thought-process transparency for every agent.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-389%20passing-2ea44f?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-424%20passing-2ea44f?logo=pytest&logoColor=white)
 ![CLI](https://img.shields.io/badge/CLI-rich-ff69b4)
 ![GUI](https://img.shields.io/badge/TUI-textual-5A3FD6)
-![Status](https://img.shields.io/badge/phases-9%2F9%20complete-success)
+![LLM](https://img.shields.io/badge/LLM-Ollama%20%7C%20OpenAI%20%7C%20Anthropic-000000?logo=ollama&logoColor=white)
+![Status](https://img.shields.io/badge/phases-10%2F10%20complete-success)
 
 </div>
 
@@ -23,9 +24,9 @@ thought-process transparency for every agent.
 | | | |
 |---|---|---|
 | [✨ Highlights](#-highlights) | [🚀 Quick Start](#-quick-start) | [🎮 The GUI](#-the-gui) |
-| [🧠 The Agent Zoo](#-the-agent-zoo) | [🎭 Hybrid NPCs](#-hybrid-npcs-simulation-2) | [🔄 The Survival Economy](#-the-survival-economy) |
-| [💥 Failure Scenarios](#-failure-scenarios) | [🏗️ Architecture](#️-architecture) | [🗺️ Roadmap](#️-roadmap) |
-| [📁 Project Structure](#-project-structure) | [🎛️ CLI Reference](#️-cli-reference) | [🛠️ Tech Stack](#️-tech-stack) |
+| [🧠 The Agent Zoo](#-the-agent-zoo) | [🎭 Hybrid NPCs](#-hybrid-npcs-simulation-2) | [🤖 LLM-Backed Agents](#-llm-backed-agents) |
+| [🔄 The Survival Economy](#-the-survival-economy) | [💥 Failure Scenarios](#-failure-scenarios) | [🏗️ Architecture](#️-architecture) |
+| [🗺️ Roadmap](#️-roadmap) | [📁 Project Structure](#-project-structure) | [🎛️ CLI Reference](#️-cli-reference) |
 
 ---
 
@@ -35,12 +36,13 @@ thought-process transparency for every agent.
 > infers, and why* it chose to bid, ask, or hold. The market is legible — not a black box.
 
 - 🧠 **Two simulations** — pure-archetype "Agent Zoo" and mood-driven "Hybrid NPCs"
+- 🤖 **Real LLM brains** — back agents with **Ollama** (free/local), **OpenAI**, or **Anthropic**; run multiple models head-to-head
 - 🤝 **Bilateral haggling** — agents negotiate round-by-round before hitting the order book
 - 📡 **Event pipeline** — Kafka-shaped `EventBus` with audit trail + live anomaly detection
 - 💥 **Stress scenarios** — reproduce panic cascades, hoarding crashes, speculator bubbles
 - 🔄 **A living economy** — agents *consume to survive*, *starve and die*, a *Producer* supplies the market, and *wages* recirculate cash
 - 🎮 **Interactive TUI** — watch agents reason, trade, and talk in real time
-- 🧪 **389 tests** across 17 files
+- 🧪 **424 tests** across 18 files
 
 ---
 
@@ -67,6 +69,7 @@ python main.py --sim zoo --ticks 30 --metrics
 <tr><td><code>--consume 3 --salary 70</code></td><td>A <b>sustainable</b> survival economy (nobody dies)</td></tr>
 <tr><td><code>--consume 6 --salary 0</code></td><td>A <b>collapse</b> — agents starve one by one ☠️</td></tr>
 <tr><td><code>--scenario panic_cascade --events</code></td><td>A market crash with live anomaly alerts</td></tr>
+<tr><td><code>--llm ollama:llama3.2</code></td><td>Agents that <b>actually reason</b> via a real LLM 🤖</td></tr>
 </table>
 
 ---
@@ -198,6 +201,56 @@ activation_score = base_weight × signal_strength(market_state, agent_state)
 
 ---
 
+## 🤖 LLM-Backed Agents
+
+> Swap the hand-written decision rules for a **real language model**. Each tick, the agent
+> gets a compact market snapshot + its persona and the model returns a JSON decision —
+> `{action, price, quantity, reasoning}` — and *that reasoning becomes the thought log.*
+
+```
+>> Ava   [ollama:llama3.2]   persona: disciplined value investor
+   Model says: BID — "price is 8% under fair value and I'm low on food; accumulate"
+   Decision: BID 4 @ $21.30
+```
+
+### Backends (pick what you have)
+
+| Spec | Backend | Needs |
+|---|---|---|
+| `mock` | Deterministic offline heuristic | nothing — **default, always works** |
+| `ollama:llama3.2` | 🦙 [Ollama](https://ollama.com) (local, free) | `ollama pull llama3.2` |
+| `openai:gpt-4o-mini` | OpenAI | `OPENAI_API_KEY` |
+| `anthropic:claude-haiku-4-5` | Anthropic | `ANTHROPIC_API_KEY` |
+
+```bash
+# Free + local (recommended): install Ollama, pull a model, then…
+python main.py --llm ollama:llama3.2 --ticks 20 --metrics
+
+# No setup at all — deterministic mock 'model'
+python main.py --llm mock --ticks 20
+
+# Run two models head-to-head (assigned to personas round-robin)
+python main.py --llm "ollama:llama3.2,openai:gpt-4o-mini" --ticks 20 --metrics
+
+# In the GUI
+python main.py --gui --llm ollama:llama3.2
+```
+
+**Five personas** are spun up (value investor, momentum trader, hoarder, nervous trader,
+market maker) alongside the rule-based Producer. With multiple models, agent names carry a
+`[model]` tag (`Ava[llama3.2]`, `Bryce[gpt-4o-mini]`) so you can compare how different
+models trade the *same* market.
+
+- 🧱 **No new dependencies** — providers use the Python stdlib (`urllib`); SDKs not required
+- 🛟 **Graceful fallback** — if the model is unreachable or returns garbage, the agent falls back to rule-based logic, so a run never crashes
+- ✅ **Validated** — model output is clamped to the agent's cash & inventory before any order is placed
+- 🧪 Fully tested offline via the deterministic `mock` client
+
+> ⏱️ **Note:** real models add latency (each agent makes one call per tick). The GUI runs the
+> sim on a worker thread so the UI stays responsive; just expect slower ticks than `mock`.
+
+---
+
 ## 🔄 The Survival Economy
 
 Agents don't just trade — they must **eat to live**. The full circular flow:
@@ -321,6 +374,7 @@ PersonalityProfile.run_contest()
 | 7 | Consumption, Survival & Death | ✅ |
 | 8 | Salaries / Cash Recirculation | ✅ |
 | 9 | Price Anchoring & Trade Talk | ✅ |
+| 10 | LLM-Backed Agents (Ollama / OpenAI / Anthropic) | ✅ |
 
 <details>
 <summary><b>📦 Phase 1 — Core Market Engine</b></summary>
@@ -419,6 +473,17 @@ PersonalityProfile.run_contest()
 
 </details>
 
+<details>
+<summary><b>🤖 Phase 10 — LLM-Backed Agents</b></summary>
+
+- Pluggable `LLMClient` interface; `MockLLMClient` (offline/deterministic) + `OllamaClient`, `OpenAIClient`, `AnthropicClient` (stdlib `urllib`, no new deps)
+- `llm/prompt.py` — context builder + robust JSON decision parser (tolerates fences/prose)
+- `LLMAgent` — model reasoning → validated order, clamped to cash/inventory; falls back to rule logic on any failure
+- `build_llm_roster()` — 5 personas + Producer; round-robins multiple models for head-to-head comparison
+- `--llm SPEC[,SPEC2]` flag (CLI + GUI) · 35 tests (parsing, mock heuristics, registry, agent, integration)
+
+</details>
+
 ---
 
 ## 📁 Project Structure
@@ -444,12 +509,19 @@ Simple-market-simulator/
 │   ├── market_maker.py · speculator.py · hoarder.py
 │   ├── panic.py · rational.py · producer.py
 │   ├── random_agent.py         #   Baseline
+│   ├── llm_agent.py            # 🤖 LLMAgent + build_llm_roster()
 │   └── hybrid/                 # 🎭 Simulation 2
 │       ├── activation.py       #   Per-archetype signal functions
 │       ├── mood.py             #   Streak / volatility / cash / contagion
 │       ├── personality.py      #   PersonalityProfile + ContestResult
 │       ├── npc.py              #   HybridNPC (delegates to winner)
 │       └── roster.py           #   Iris, Marcus, Dex, Vera, Rex (+ Producer)
+│
+├── llm/                        # 🤖 Model backends
+│   ├── client.py               #   LLMClient ABC + MockLLMClient
+│   ├── providers.py            #   Ollama / OpenAI / Anthropic (urllib)
+│   ├── prompt.py               #   Prompt builder + decision parser
+│   └── registry.py             #   "provider:model" -> client
 │
 ├── logger/
 │   └── thought_logger.py       # 🎨 Rich CLI output
@@ -458,10 +530,10 @@ Simple-market-simulator/
 │   ├── app.py                  #   SimulatorApp (panels + worker)
 │   └── logger.py               #   GUILogger (callback bridge)
 │
-└── tests/                      # 🧪 389 tests across 17 files
+└── tests/                      # 🧪 424 tests across 18 files
     ├── test_models · order_book · base_agent · random_agent · engine
     ├── test_agents_zoo · haggle · events · metrics · scenarios
-    ├── test_consumption · producer · salary
+    ├── test_consumption · producer · salary · llm
     └── test_hybrid/  (activation · mood · personality · npc)
 ```
 
@@ -483,6 +555,7 @@ Simple-market-simulator/
 | `--scenario` | `hoarding_crash` · `panic_cascade` · `speculator_bubble` | Inject a stress scenario |
 | `--consume` | float | Per-tick survival ration (drives survival/death). CLI off; GUI defaults Med |
 | `--salary` | float | Wage paid per worker per tick (recirculates cash). CLI off; GUI defaults living wage |
+| `--llm` | `mock` · `ollama:MODEL` · `openai:MODEL` · `anthropic:MODEL` (comma-separate for multiple) | Back agents with a language model |
 | `--gui` | flag | Launch the interactive Textual TUI |
 
 <details>
@@ -517,7 +590,8 @@ python -m pytest tests/ -v
 | 📡 Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
 | 🎨 CLI output | [`rich`](https://github.com/Textualize/rich) — panels, tables, colour |
 | 🎮 Interactive GUI | [`textual`](https://github.com/Textualize/textual) — live multi-panel TUI |
-| 🧪 Testing | [`pytest`](https://pytest.org) — **389 tests** across 17 files |
+| 🤖 LLM backends | Ollama · OpenAI · Anthropic (via stdlib `urllib`, no SDK required) |
+| 🧪 Testing | [`pytest`](https://pytest.org) — **424 tests** across 18 files |
 
 ---
 
