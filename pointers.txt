@@ -1,3 +1,7 @@
-Developed a simulation framework modeling decentralized market behaviors. Used autonomous entities to stress-test price equilibrium in volatile conditions.
-Architected agent-based negotiation protocols, enabling autonomous "haggling" logic where entities independently adjusted bid/ask thresholds based on real-time inventory scarcity and demand surges.
-Built an event-driven pipeline with Kafka to trace trade settlements. Identified critical cases where agent hoarding or sell-offs caused systemic liquidity crashes.
+Built a Python agent-based market simulator with 5 trader archetypes on a central limit order book, modeling price discovery, liquidity, and systemic risk across 10 modular subsystems backed by 424 unit tests.
+
+Designed autonomous agents with bilateral haggling and mood-driven behavior switching (2–3 blended personas per agent); reproduced market collapses with wealth concentration up to a 0.8 Gini coefficient under stress scenarios.
+
+Implemented cost-plus price anchoring and wage-based cash recirculation that cut peak inflation ~93% (+121% to +8%) and halved starvation-driven agent deaths (4 to 2), reaching a sustainable equilibrium.
+
+Integrated 3 pluggable LLM backends (Ollama / OpenAI / Anthropic) for natural-language agent reasoning with rule-based fallback, plus a real-time terminal dashboard.
