@@ -87,6 +87,15 @@ _SCENARIO_OPTIONS = [
     ("Speculator Bubble",    "speculator_bubble"),
 ]
 
+# Per-tick survival consumption rate. "High" makes agents depend heavily on
+# the Producer; weak agents starve and get knocked out.
+_CONSUME_OPTIONS = [
+    ("Consume: Off",          "0"),
+    ("Consume: Low (2/tick)", "2"),
+    ("Consume: Med (4/tick)", "4"),
+    ("Consume: High (6/tick)", "6"),
+]
+
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -228,14 +237,14 @@ class SimulatorApp(App):
 
     def __init__(self, sim_mode: str = "zoo", scenario: str = "none",
                  ticks: int = 20, speed: str = "normal",
-                 haggle: bool = False, consumption: float = 0.0):
+                 haggle: bool = False, consumption: float = 6.0):
         super().__init__()
         self._sim_mode    = sim_mode
         self._scenario    = scenario
         self._ticks       = ticks
         self._speed       = speed
         self._haggle      = haggle
-        self._consumption = consumption
+        self._consumption = consumption   # GUI defaults to High so survival is visible
 
         # Engine + GUI bridge
         self._engine:    Optional[SimulationEngine] = None
@@ -247,13 +256,17 @@ class SimulatorApp(App):
         self._stop_flag     = threading.Event()        # set = kill worker
         self._continuous    = threading.Event()        # set = keep releasing permits
         self._worker_live   = False                    # True once worker is started
-        self._ui_ready         = False                    # True once on_mount completes
+        self._ui_ready      = False                    # True once on_mount completes
 
         # Price history for sparkline
         self._prices: list[float] = list(_SEED_HISTORY)
 
         # Agent row keys (for DataTable updates)
         self._agent_rows: dict[str, str] = {}
+
+    def _consume_value(self) -> str:
+        v = str(int(self._consumption))
+        return v if v in {"0", "2", "4", "6"} else "6"
 
     # ── Compose ───────────────────────────────────────────────────────────────
 
@@ -268,6 +281,7 @@ class SimulatorApp(App):
                 yield Select(_SIM_OPTIONS,      id="sel-sim",      value=self._sim_mode)
                 yield Select(_SCENARIO_OPTIONS, id="sel-scenario",  value=self._scenario or "none")
                 yield Select(_SPEED_OPTIONS,    id="sel-speed",     value=self._speed)
+                yield Select(_CONSUME_OPTIONS,  id="sel-consume",   value=self._consume_value())
 
                 yield Label("", id="lbl-sep")
                 yield Button("START",  id="btn-start",  variant="success")
@@ -353,6 +367,9 @@ class SimulatorApp(App):
 
         lg.on_consumption = lambda tick, total, starving: \
             self.call_from_thread(self._show_consumption, tick, total, starving)
+
+        lg.on_death = lambda agent_id, tick: \
+            self.call_from_thread(self._show_death, agent_id, tick)
 
         lg.on_final_state = lambda agents, lp: \
             self.call_from_thread(self._show_final_state, agents, lp)
@@ -441,7 +458,7 @@ class SimulatorApp(App):
         # Default: zoo — consumers start on bare-minimum inventory and depend
         # on the Producer for supply.
         return [
-            ProducerAgent("Producer",    inventory=10, cash=200.0, production_rate=10),
+            ProducerAgent("Producer",    inventory=12, cash=200.0, production_rate=20),
             MarketMakerAgent("MarketMaker", inventory=5, cash=800.0),
             SpeculatorAgent("Speculator",   inventory=4, cash=600.0),
             HoarderAgent("Hoarder",         inventory=4, cash=1000.0, hoard_target=60),
@@ -473,12 +490,17 @@ class SimulatorApp(App):
     @on(Select.Changed, "#sel-sim")
     @on(Select.Changed, "#sel-scenario")
     @on(Select.Changed, "#sel-speed")
+    @on(Select.Changed, "#sel-consume")
     async def on_select_changed(self, event: Select.Changed):
         if not self._ui_ready or event.value is None or event.value == Select.BLANK:
             return
         if event.select.id == "sel-speed":
             self._speed = str(event.value)
             self._update_speed_label()
+        elif event.select.id == "sel-consume":
+            self._consumption = float(event.value)
+            if not self.sim_running:
+                await self._reset()
         else:
             if not self.sim_running:
                 await self._reset()
@@ -692,6 +714,12 @@ class SimulatorApp(App):
         if starving:
             msg += f"  [bold red](STARVING: {', '.join(starving)})[/bold red]"
         self.query_one("#console-log", RichLog).write(msg)
+
+    def _show_death(self, agent_id: str, tick: int):
+        self.query_one("#console-log", RichLog).write(
+            f"[dim]\\[{tick:02d}][/dim] [bold red]DEATH[/bold red]     "
+            f"{agent_id} starved — out for the count"
+        )
 
     def _show_final_state(self, agents, last_price):
         clog = self.query_one("#console-log", RichLog)
