@@ -1,448 +1,532 @@
-# Simple Market Simulator
+<div align="center">
 
-A decentralized agent-based market simulation that models price equilibrium, autonomous negotiation, and systemic liquidity risk — with full thought-process transparency for every agent.
+# 📊 Simple Market Simulator
+
+### *A decentralized, agent-based market where every trader thinks out loud.*
+
+Model price equilibrium, autonomous haggling, systemic liquidity risk, and a full
+**survival economy** — consumption, starvation, production, wages — with complete
+thought-process transparency for every agent.
+
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-389%20passing-2ea44f?logo=pytest&logoColor=white)
+![CLI](https://img.shields.io/badge/CLI-rich-ff69b4)
+![GUI](https://img.shields.io/badge/TUI-textual-5A3FD6)
+![Status](https://img.shields.io/badge/phases-9%2F9%20complete-success)
+
+</div>
 
 ---
 
-## What This Is
+## 🧭 Table of Contents
 
-This simulator spins up a virtual market populated by autonomous agents. Each agent has its own inventory, cash balance, risk appetite, and decision logic. They trade with each other through a central order book.
-
-The distinguishing feature: every agent **thinks out loud**. Before acting, each agent logs its internal reasoning — what it sees, what it infers, and why it chose to bid/ask/hold. This makes the market legible, not a black box.
-
-Two simulations are available:
-
-- **Simulation 1 — Agent Zoo**: Five pure archetypes, each with a single fixed personality. Clean and predictable. Good for isolating how each behavior type affects the market.
-- **Simulation 2 — Hybrid NPCs**: Each NPC carries 2–3 embedded archetypes. Market conditions vote on which one surfaces each tick. Messy and emergent. Closer to how real traders behave.
-
----
-
-## Project Roadmap
-
-### Phase 1 — Core Market Engine ✅
-- [x] Central order book (bid/ask matching, midpoint price discovery, self-trade prevention)
-- [x] Tick-based simulation loop with per-tick market state snapshots
-- [x] Agent base class: inventory, cash, `think()` + `act()` interface, `on_trade()` settlement
-- [x] Trade settlement logic with cash/inventory conservation
-- [x] CLI (`--sim`, `--ticks`, `--agents`, `--seed`, `--quiet` flags)
-- [x] 75 unit tests covering models, order book, base agent, engine conservation laws
-
-### Phase 2 — Agent Zoo ✅
-- [x] Five distinct archetypes with full thought-process output
-
-| Agent | Behavior | Pathology |
+| | | |
 |---|---|---|
-| `MarketMakerAgent` | Quotes both sides; widens spread under volatility; tilts inventory | Inventory imbalance during one-sided flows |
-| `SpeculatorAgent` | Momentum follower; pays premium to enter, accepts discount to exit | Amplifies bubbles and crashes |
-| `HoarderAgent` | Accumulates obsessively below market; releases only at steep premium | Triggers artificial scarcity + liquidity crash |
-| `PanicAgent` | Calm until price drops past threshold; dumps entire position instantly | Cascades sell-offs, worsens crashes |
-| `RationalAgent` | Anchors to moving-average fair value; buys low, sells high quietly | Slow to react; stabilizes market over time |
-
-- [x] `_pending_orders` pattern — `think()` decides, `act()` executes; thought log always matches action
-- [x] `initial_price_history` engine seeding so all agents activate from tick 1
-- [x] 42 behavioral tests — each agent verified against purpose-built market states
-- [x] `--sim zoo` CLI mode
-
-### Phase 3 — Haggling / Negotiation Protocol ✅
-- [x] `HaggleIntent` — direction + ideal price + worst-acceptable price + quantity
-- [x] `HaggleSession` — N-round concession negotiation; both parties step toward their limit each round
-- [x] `HaggleCoordinator` — pairs compatible buyers/sellers (deal zone must exist), one session per agent per tick; shuffled to prevent always-same pairings
-- [x] Per-archetype `haggle_intent()` overrides — Hoarder lowballs, Panic dumps at threshold, Rational anchors to fair value, Speculator chases momentum, MarketMaker negotiates only when inventory-imbalanced
-- [x] `HybridNPC.haggle_intent()` — delegates to winning archetype's intent
-- [x] Engine pre-tick phase — bilateral trades settle and state rebuilds before the regular order book runs
-- [x] Haggling thought-process log printed per session (who bid what, round-by-round)
-- [x] `--haggle` CLI flag to enable bilateral negotiation
-- [x] 42 tests covering `HaggleSession`, `HaggleCoordinator`, and all per-agent overrides
-
-### Phase 4 — Event Pipeline ✅
-- [x] `EventType` enum + `MarketEvent` dataclass — typed schema covering trades, tick summaries, and anomalies
-- [x] `EventBus` — in-process publish/subscribe bus; consumers register by event type
-- [x] `AuditConsumer` — stores full event history; exports to JSONL audit file
-- [x] `AnomalyDetector` consumer — flags: panic cascades, liquidity drain, price crash/spike, sell-off storms
-- [x] Engine integration — emits `TRADE`, `HAGGLE_TRADE`, and `TICK_SUMMARY` events automatically
-- [x] `--events` CLI flag; anomalies print as inline red warnings during the run
-- [x] `--audit <path>` flag to write the full JSONL audit trail to disk
-- [x] 39 tests for event schema, bus routing, audit consumer, and anomaly detection logic
-
-### Phase 5 — Stress Testing & Scenarios ✅
-- [x] `ScenarioEvent` + `ScenarioRunner` — timed interventions that fire at specified ticks
-- [x] Four intervention types: `supply_shock`, `demand_surge`, `agent_collapse`, `price_inject`
-- [x] Three named failure-mode scenarios reproducing the critical pathologies:
-  1. `hoarding_crash` — hoarder corners supply → artificial scarcity → price spike at tick 10 → hard crash at tick 15
-  2. `panic_cascade` — sharp price inject at tick 8 breaches all panic thresholds simultaneously → liquidity drain → second leg down at tick 12
-  3. `speculator_bubble` — 7 ticks of rising price injects feed Speculator momentum → hard reversal at tick 9 turns Speculator into a panic seller
-- [x] `MetricsCollector` — per-tick snapshots; end-of-run `RunMetrics` with price, activity, and wealth stats
-- [x] `gini()`, `price_volatility()`, `max_drawdown()` as standalone pure functions
-- [x] `--scenario hoarding_crash | panic_cascade | speculator_bubble` CLI flag
-- [x] `--metrics` CLI flag — shows run metrics table + per-agent PnL ranked by profit
-- [x] Scenario events logged in yellow inline; anomalies logged in red inline
-- [x] 59 tests (29 metrics + 30 scenarios) — all 335 tests passing
-
-### Phase 6 — Interactive GUI ✅
-- [x] `GUILogger` — drop-in for `ThoughtLogger`; fires callbacks instead of printing so any UI can subscribe
-- [x] `SimulatorApp` — full Textual TUI (runs in-terminal, no browser needed) with four panels:
-
-| Panel | What it shows |
-|---|---|
-| **Controls** (left) | Sim mode / scenario / speed dropdowns; START / STEP / PAUSE / RESET buttons; live speed, tick counter, price, bid, ask |
-| **Agent Thoughts** (centre) | Scrollable, colour-coded reasoning log — every agent's full `think()` output, revealed one agent at a time at the chosen speed, BID/ASK orders highlighted |
-| **Market State** (right) | Live price + depth readout, price sparkline (last 40 ticks), agent table with live inventory / cash / net-worth / trade count |
-| **Console Log** (bottom) | Trades, haggle deal round-by-round, anomaly alerts in red, scenario injections in yellow |
-
-- [x] Engine refactored to `prepare()` / `step()` / `finalize()` — GUI controls exact tick pace; CLI `run()` is unchanged
-- [x] Semaphore-driven worker thread: STEP releases one tick; START runs ticks back-to-back; all engine work stays off the UI thread so `call_from_thread` callbacks always succeed
-- [x] **Per-thought pacing** — the delay applies *after each agent's reasoning*, so thoughts appear one agent at a time instead of dumping the whole tick at once
-- [x] **Five speed tiers** (Very Slow 1.2 s → Slow 0.6 s → Normal 0.25 s → Fast 0.08 s → Instant), adjustable **live** via the dropdown or the `+` / `-` keys; current speed shown in the control panel
-- [x] Keyboard shortcuts: `Space` start/pause, `S` step one tick, `R` reset, `+`/`-` faster/slower, `Q` quit (all priority bindings, so they work regardless of widget focus)
-- [x] `--gui` CLI flag launches the TUI; all other flags (`--sim`, `--ticks`, `--haggle`, `--scenario`) carry over
-
-### Phase 7 — Consumption, Survival, Death & Production ✅
-- [x] **Consumption** — every agent burns a survival ration of the commodity each tick (`--consume RATE`). Inventory is no longer static; it depletes unless replenished.
-- [x] **Survival pressure** — when an agent's runway (inventory ÷ consumption) drops below a threshold it bids *above* market to restock, escalating the closer it gets to starvation. This keeps an otherwise-frozen market liquid and produces scarcity-driven price spikes.
-- [x] **Death / knock-out** — an agent that can't cover its ration for `starvation_limit` consecutive ticks (default 3) **dies** and stops trading ("out for the count"). Logged inline as `X DEATH`; survivors vs deaths reported in metrics.
-- [x] **`ProducerAgent`** — the supply side. Mints `production_rate` units each tick and sells its *surplus* (keeping a survival reserve so it never starves itself) just below market so it reliably clears. Without it, a consuming economy depletes to zero and everyone starves.
-- [x] Consumers start on **bare-minimum inventory** and depend on the Producer for supply
-- [x] Engine gains a production phase (start of tick) and a consumption phase (end of tick); logged inline (`+ PRODUCED`, `~ CONSUMED` with `STARVING` callouts, `X DEATH`)
-- [x] Metrics extended with total consumed, starvation ticks, deaths/survivors, and per-agent consumed/starved columns; final-state table shows ALIVE / DEAD status
-- [x] CLI `--consume RATE`; GUI gains a **Consume** dropdown (Off / Low / Med / High) defaulting to **High** so survival dynamics are visible immediately
-- [x] 41 new tests (consumption + death + producer) — 376 total, all passing
-
-> **Emergent result:** Under heavy consumption with a single under-producing supplier, the market becomes a survival contest. Agents that lose the bidding war for food starve and die off one by one, while the monopoly Producer absorbs nearly all the cash (Gini → ~0.8) and ends as the lone survivor. Tune `--consume` and `production_rate` to shift between sustainable equilibrium and total die-off.
-
-### Phase 8 — Salaries / Cash Recirculation ✅
-- [x] **Payroll** — employers (the Producer) pay each living worker a wage every tick (`--salary WAGE`), recirculating the cash the Producer extracts through sales. Closes the loop: sell food → earn cash → pay wages → workers buy food.
-- [x] If employers can't cover the full wage bill, the affordable amount is split evenly and drawn from employers in proportion to their cash; **cash is conserved** (a pure transfer)
-- [x] `is_employer` flag on agents (Producer sets it); dead workers aren't paid
-- [x] Engine gains a payroll phase (start of tick, after production); logged inline as `$ PAYROLL`
-- [x] Metrics report total wages paid; per-agent `wages_received` / `wages_paid` tracked
-- [x] CLI `--salary WAGE`; GUI gains a **Salary** dropdown (Off / $10 / $20) defaulting to **On**
-- [x] 10 new tests (transfer, conservation, employer-cash cap, dead-worker exclusion, death reduction) — 386 total, all passing
-
-> **Emergent result:** Recirculation visibly keeps workers alive. At moderate consumption (`--consume 2 --salary 15`), deaths drop from **4 → 2** (survivors 2 → 4) versus no salary. Under *heavy* consumption, survival bidding drives runaway price inflation that still outruns fixed wages — so the next lever (Phase 9) anchors the Producer's price.
-
-### Phase 9 — Price Anchoring & Trade Talk ✅
-- [x] **Cost-plus price anchor** — the Producer now sells at `base_cost × (1 + margin)` (a stable ~$21), *not* "just below the last trade". Chasing the last price created a runaway loop with desperate survival bids; anchoring breaks it. Survival bids also reference the current **best ask** instead of the (runaway) last price.
-- [x] **Inflation tamed** — the same heavy run that previously spiralled to **$50 (+121%)** now holds at **~$24 (+8%)**.
-- [x] **Sustainable equilibrium reachable** — with the anchor plus a living wage (`--consume 3 --salary 70`), the economy reaches a true steady state: **0 deaths, stable price ~$21, indefinitely**. The balance rule is simply *wage ≈ ration × price*.
-- [x] **Trade Talk** — each agent now "speaks" a short, archetype-flavoured line when it trades (Speculator: *"Riding the momentum — to the moon!"*; Panic: *"Get me out!"*; Hoarder: *"Mine now."*; Rational: *"below fair value — patience pays."*). HybridNPCs speak in their dominant archetype's voice.
-- [x] GUI gains a dedicated **Trade Talk** panel (bottom-right, beside the Console Log); the CLI prints the dialogue inline under each trade
-- [x] GUI **Salary** dropdown now offers Off / $30 / $70 (living wage), defaulting to a mostly-sustainable Med-consume + living-wage config
-- [x] 3 new tests (anchor pricing, anchor ignores frenzy, inflation tamed) — 389 total, all passing
-
-> **The complete loop:** Producer mints supply at a stable cost-plus price → sells it → pays wages → workers buy food → survive. Anchoring stops inflation; salaries stop cash starvation. Together they turn the doomed survival economy into a sustainable one — and you can still break it by cranking `--consume` past what wages can cover.
+| [✨ Highlights](#-highlights) | [🚀 Quick Start](#-quick-start) | [🎮 The GUI](#-the-gui) |
+| [🧠 The Agent Zoo](#-the-agent-zoo) | [🎭 Hybrid NPCs](#-hybrid-npcs-simulation-2) | [🔄 The Survival Economy](#-the-survival-economy) |
+| [💥 Failure Scenarios](#-failure-scenarios) | [🏗️ Architecture](#️-architecture) | [🗺️ Roadmap](#️-roadmap) |
+| [📁 Project Structure](#-project-structure) | [🎛️ CLI Reference](#️-cli-reference) | [🛠️ Tech Stack](#️-tech-stack) |
 
 ---
 
-## Simulation 2 — Hybrid NPC Market
+## ✨ Highlights
 
-> **The idea:** Pure archetypes are clean for analysis but unrealistic. Real traders aren't always rational or always panicking — they shift between modes depending on what's happening around them. Hybrid NPCs each carry 2–3 embedded archetypes, and market conditions vote on which one surfaces to make the decision. Think of it as mood-driven trading.
+> **Every agent thinks out loud.** Before acting, each one logs *what it sees, what it
+> infers, and why* it chose to bid, ask, or hold. The market is legible — not a black box.
 
-### How It Works
+- 🧠 **Two simulations** — pure-archetype "Agent Zoo" and mood-driven "Hybrid NPCs"
+- 🤝 **Bilateral haggling** — agents negotiate round-by-round before hitting the order book
+- 📡 **Event pipeline** — Kafka-shaped `EventBus` with audit trail + live anomaly detection
+- 💥 **Stress scenarios** — reproduce panic cascades, hoarding crashes, speculator bubbles
+- 🔄 **A living economy** — agents *consume to survive*, *starve and die*, a *Producer* supplies the market, and *wages* recirculate cash
+- 🎮 **Interactive TUI** — watch agents reason, trade, and talk in real time
+- 🧪 **389 tests** across 17 files
 
-Each Hybrid NPC has a **personality profile** — a fixed set of 2–3 archetypes with base weights that define their character.
+---
+
+## 🚀 Quick Start
+
+```bash
+# 1️⃣  Set up
+python -m venv .venv
+.venv\Scripts\activate            # Windows
+# source .venv/bin/activate       # macOS / Linux
+pip install -r requirements.txt
+
+# 2️⃣  Launch the interactive GUI  (the fun way)
+python main.py --gui
+
+# 3️⃣  …or run headless in the terminal
+python main.py --sim zoo --ticks 30 --metrics
+```
+
+<table>
+<tr><th>Try this…</th><th>…to see this</th></tr>
+<tr><td><code>--sim zoo</code></td><td>5 pure archetypes trade through an order book</td></tr>
+<tr><td><code>--sim hybrid --haggle</code></td><td>Mood-driven NPCs that negotiate</td></tr>
+<tr><td><code>--consume 3 --salary 70</code></td><td>A <b>sustainable</b> survival economy (nobody dies)</td></tr>
+<tr><td><code>--consume 6 --salary 0</code></td><td>A <b>collapse</b> — agents starve one by one ☠️</td></tr>
+<tr><td><code>--scenario panic_cascade --events</code></td><td>A market crash with live anomaly alerts</td></tr>
+</table>
+
+---
+
+## 🎮 The GUI
+
+A full in-terminal dashboard (built on [Textual](https://textual.textualize.io/)) — no browser needed.
 
 ```
-Iris   ->  Rational (50%) | Speculator (35%) | Panic (15%)
-Marcus ->  Hoarder (60%)  | MarketMaker (40%)
-Dex    ->  Speculator (45%) | Panic (35%) | Rational (20%)
-Vera   ->  MarketMaker (55%) | Hoarder (30%) | Rational (15%)
-Rex    ->  Hoarder (50%)  | Panic (30%) | Speculator (20%)
+┌─ Controls ──┬──── Agent Thoughts ─────┬── Market State ──┐
+│ ▸ Sim mode  │  >> Speculator  tick 8  │  Price  $21.20   │
+│ ▸ Scenario  │   > UPTREND +4.9%       │  Bid    $21.68   │
+│ ▸ Speed     │   BID 12 @ $21.68       │  Ask    $21.00   │
+│ ▸ Consume   │  >> Hoarder             │  ▁▂▃▅▆▇ sparkline │
+│ ▸ Salary    │   > Still 40 short      │  ┌─────────────┐ │
+│ [START][STEP]│   BID 5 @ $21.40       │  │ Agent  NW   │ │
+│ [PAUSE][RESET]│ >> Producer            │  │ 🏭 P  $6.5k │ │
+│ Speed: Normal│   + PRODUCED 25 units  │  │ 🚀 Sp $812  │ │
+│ Tick: 8/30  │   $ PAYROLL $70 ea.     │  └─────────────┘ │
+├─────────────┴─────────────────────────┴──────────────────┤
+│ Console Log              │ Trade Talk                      │
+│ [08] TRADE Sp ← P @ $21  │ Producer: "Shipped at cost+."   │
+│ [08] PAYROLL $70 × 5     │ Speculator: "To the moon! 🚀"   │
+│ [08] ☠ DEATH Panic       │ Hoarder: "Mine now. Never enuf."│
+└──────────────────────────┴─────────────────────────────────┘
 ```
 
-Every tick, each embedded archetype computes an **activation score** — how loudly that side of their personality is calling for control. The score combines the base weight with a live signal from market + personal state. The highest score wins and drives `think()` + `act()` for that tick.
+| ⌨️ Key | Action | | ⌨️ Key | Action |
+|:---:|---|---|:---:|---|
+| `Space` | ▶️ Start / Pause | | `+` / `-` | ⏩ Faster / ⏪ Slower |
+| `S` | 👣 Step one tick | | `R` | 🔄 Reset |
+| `Q` | 🚪 Quit | | | |
+
+> 💡 **Tip:** Press `Space` to run, then tap `-` a few times to slow it right down and
+> watch each agent reason *one at a time*. Speed adjusts live — no restart needed.
+
+---
+
+## 🧠 The Agent Zoo
+
+Five pure archetypes, each a fixed personality with its own decision logic and failure mode.
+
+| | Agent | Behavior | ⚠️ Pathology |
+|:---:|---|---|---|
+| 📈 | **MarketMaker** | Quotes both sides; widens spread under volatility | Inventory imbalance in one-sided flows |
+| 🚀 | **Speculator** | Momentum chaser; pays up to enter, dumps to exit | Amplifies bubbles & crashes |
+| 🐉 | **Hoarder** | Accumulates below market; releases at steep premium | Artificial scarcity → liquidity crash |
+| 😱 | **Panic** | Calm until price cracks, then dumps *everything* | Sell-off cascades |
+| 🧮 | **Rational** | Anchors to fair value; buys low, sells high quietly | Slow, but stabilizes the market |
+| 🏭 | **Producer** | Mints supply each tick, sells at a cost-plus anchor | The economy's supply source & employer |
+
+---
+
+## 🎭 Hybrid NPCs (Simulation 2)
+
+> **The idea:** real traders aren't *always* rational or *always* panicking — they shift
+> between modes depending on what's happening. Each Hybrid NPC carries **2–3 embedded
+> archetypes**, and market conditions vote each tick on which personality takes the wheel.
+> Think of it as **mood-driven trading**.
+
+**The cast** — each NPC is a weighted blend:
 
 ```
-activation_score(archetype) = base_weight x signal_strength(archetype, market_state, agent_state)
+Iris    🧮 Rational 50%  | 🚀 Speculator 35% | 😱 Panic 15%
+Marcus  🐉 Hoarder 60%   | 📈 MarketMaker 40%
+Dex     🚀 Speculator 45%| 😱 Panic 35%      | 🧮 Rational 20%
+Vera    📈 MarketMaker 55%| 🐉 Hoarder 30%   | 🧮 Rational 15%
+Rex     🐉 Hoarder 50%   | 😱 Panic 30%      | 🚀 Speculator 20%
 ```
 
-### Activation Signals — What Makes Each Side Take Over
+Each tick every embedded archetype computes an **activation score**, and the loudest wins:
 
-| Archetype | Activates strongly when... |
+```
+activation_score = base_weight × signal_strength(market_state, agent_state)
+```
+
+<details>
+<summary><b>🔬 What makes each side take over (activation signals)</b></summary>
+
+| Archetype | Activates strongly when… |
 |---|---|
-| `Rational` | Price deviates from estimated fair value; market is calm |
-| `Speculator` | Strong price momentum detected (trend up or down for N ticks) |
-| `MarketMaker` | Bid-ask spread is wide; inventory is balanced |
-| `Hoarder` | Scarcity index rising; personal inventory is low relative to target |
-| `Panic` | Price dropped sharply; recent trades at a loss; cash critically low |
+| 🧮 Rational | Price deviates from fair value; market is calm |
+| 🚀 Speculator | Strong momentum (trend up/down for N ticks) |
+| 📈 MarketMaker | Bid-ask spread is wide; inventory balanced |
+| 🐉 Hoarder | Scarcity rising; personal inventory low |
+| 😱 Panic | Sharp price drop; recent losses; cash critically low |
 
-### Mood Modifiers
+</details>
 
-These factors amplify or suppress activation scores each tick, simulating stress and confidence:
+<details>
+<summary><b>😤 Mood modifiers (stress & confidence)</b></summary>
 
 | Factor | Effect |
 |---|---|
-| Winning streak (last 3 trades profitable) | Boosts Speculator, suppresses Panic |
-| Losing streak (last 3 trades at a loss) | Boosts Panic, suppresses Rational |
-| High market volatility | Amplifies whichever archetype already leads |
-| Very low cash reserve | Suppresses Hoarder, amplifies Panic |
-| Large competitor dump detected | Spikes Panic signal for all NPCs simultaneously (contagion) |
+| 🔥 Winning streak | Boosts Speculator, suppresses Panic |
+| 💸 Losing streak | Boosts Panic, suppresses Rational |
+| 🌪️ High volatility | Amplifies whichever archetype leads |
+| 🪙 Low cash | Suppresses Hoarder, amplifies Panic |
+| 📉 Competitor dump | Spikes Panic for **all** NPCs (contagion) |
 
-### Thought-Process Output — Hybrid Mode
+</details>
 
-The internal monologue shows the full activation contest before the winning archetype's voice takes over:
+<details>
+<summary><b>🗣️ Sample thought-process output</b></summary>
 
 ```
-[TICK 58] HybridNPC Iris (Rational 50% | Speculator 35% | Panic 15%) thinking...
-  > Inventory: 22 units | Cash: $840 | Market: $21.30 (up 9% last 5 ticks)
+[TICK 58] HybridNPC Iris (Rational 50% | Speculator 35% | Panic 15%)
+  > Inventory: 22 | Cash: $840 | Market: $21.30 (up 9% last 5 ticks)
   > Mood modifier: winning streak (+0.15 to Speculator)
 
   > Activation contest:
-  |  Rational    0.38  (price above fair $19.80 -- slight sell signal, not strong)
-  |  Speculator  0.74  (momentum +9% over 5 ticks + winning streak boost)
-  |  Panic       0.09  (no loss trigger, cash adequate)
+  |  Rational    0.38   (above fair $19.80 — weak sell signal)
+  |  Speculator  0.74   (momentum +9% + winning-streak boost)
+  |  Panic       0.09   (no loss trigger, cash fine)
 
-  > DOMINANT MODE: Speculator [beat Rational by +0.36]
+  > DOMINANT MODE: Speculator  [beat Rational by +0.36]
   > [Speculator] Trend is strong. Already up on last two buys. Ride it.
-  > Decision: BID 10 units @ $21.72 (2% above market to get filled fast)
+  > Decision: BID 10 @ $21.72  (2% above market to get filled)
+```
+
+</details>
+
+**👀 Emergent behaviours to watch for:**
+
+- 🎭 **Mood swings** — a dominant archetype displaced mid-trend (often marks a reversal)
+- 🦠 **Contagion** — one NPC's panic dump spikes Panic scores for its neighbours
+- 🤐 **Suppressed rationality** — the Rational voice can't get heard during volatility
+- 🌗 **Personality drift** — a winning streak makes a Rational NPC act like a Speculator
 
 ---
 
-[TICK 71] HybridNPC Dex (Speculator 45% | Panic 35% | Rational 20%) thinking...
-  > Inventory: 41 units | Cash: $120 | Market: $17.60 (down 14% last 5 ticks)
-  > Mood modifier: losing streak (+0.20 to Panic) | cash critical (+0.15 to Panic)
+## 🔄 The Survival Economy
 
-  > Activation contest:
-  |  Speculator  0.31  (downtrend -- short signal, but no shorting available)
-  |  Panic       0.88  (price -14% + 2 losing trades + cash near zero -- all stacked)
-  |  Rational    0.19  (fair value $19, but Dex cannot afford to wait)
+Agents don't just trade — they must **eat to live**. The full circular flow:
 
-  > DOMINANT MODE: Panic [beat Speculator by +0.57]
-  > [Panic] Everything is going wrong at once. I need out.
-  > Decision: DUMP 41 units @ $15.00 -- take whatever the market gives.
+```
+            💵 pays wages
+      ┌─────────────────────────────────────────┐
+      │                                          │
+ ┌────▼─────┐    sells food     ┌────────────┐   │
+ │ 🏭 PRODUCER│ ───────────────▶ │ ORDER BOOK │   │
+ │  mints &  │   (cost-plus     │  bid / ask │   │
+ │  anchors  │    anchor)       └─────┬──────┘   │
+ └────▲─────┘                         │ workers buy
+      │ earns cash                    ▼          │
+      │                       ┌───────────────┐  │
+      └───────────────────────│ 🧠 CONSUMERS  │──┘
+                              │ eat each tick │
+                              │ or starve ☠️  │
+                              └───────────────┘
 ```
 
-### Emergent Behaviors to Watch For
+| Mechanic | What happens |
+|---|---|
+| 🍽️ **Consumption** | Every agent burns a ration each tick (`--consume`). Inventory depletes. |
+| ⏳ **Survival pressure** | Low on stock? Agents bid **above** market to restock before starving. |
+| ☠️ **Death** | Miss the ration `N` ticks running → knocked out, stops trading. |
+| 🏭 **Production** | The Producer mints fresh supply every tick and sells the surplus. |
+| ⚓ **Price anchor** | Producer prices at `cost × (1 + margin)` — *ignores* the frenzy, killing runaway inflation. |
+| 💵 **Salaries** | The Producer pays workers a wage each tick, recirculating cash so they stay solvent. |
 
-- **Mood swings** — dominant archetype displaced mid-trend (often coincides with price reversals)
-- **Contagion** — one NPC's panic dump spikes Panic scores for neighbors, cascading into a sell-off
-- **Suppressed rationality** — Rational persona can't get a word in during volatility; stabilizing effect only appears in calm markets
-- **Personality drift** — winning streak makes a Rational-dominant NPC briefly behave like a Speculator
+### 📈 The balance dial
+
+> The economy lives or dies on one rule: **wage ≈ ration × price**.
+
+| Config | Price | Outcome |
+|---|---|---|
+| `--consume 3 --salary 70` | stable **~$21** | ✅ **Sustainable** — 0 deaths, runs forever |
+| `--consume 4 --salary 15` | **~$24** (+8%) | ⚠️ Partial die-off — wages can't cover food |
+| `--consume 6 --salary 0` | spikes then freezes | ☠️ **Collapse** — 5 of 6 starve; Producer hoards all cash (Gini → 0.8) |
+
+> 🧪 **Anchor in action:** the same heavy run that once spiralled to **$50 (+121%)**
+> now holds at **~$24 (+8%)** thanks to cost-plus pricing.
+
+### 🗣️ Trade Talk
+
+Every agent *speaks* in its own voice as it deals — shown in a dedicated GUI panel and inline in the CLI:
+
+> 🚀 **Speculator:** *"Riding the momentum — to the moon!"*
+> 😱 **Panic:** *"Get me out! Take it, take it!"*
+> 🐉 **Hoarder:** *"Mine now — never enough."*
+> 🧮 **Rational:** *"Below fair value — patience pays."*
+> 🏭 **Producer:** *"Shipped at my cost-plus price. Supply keeps flowing."*
 
 ---
 
-## Scenario Outcomes
+## 💥 Failure Scenarios
 
-Each named scenario deliberately reproduces a real market failure pattern. Run with `--quiet --metrics` to see the outcome without the full thought log.
+Timed interventions that deliberately reproduce real market pathologies — run with `--scenario`.
 
-### Panic Cascade (`--scenario panic_cascade`)
+<table>
+<tr><th>Scenario</th><th>The story</th><th>Result</th></tr>
+<tr>
+<td>💣 <b>panic_cascade</b></td>
+<td>A −28% shock at tick 8 breaches every Panic threshold at once → simultaneous dumps → liquidity drain.</td>
+<td>Price <b>$21.89 → $12.01 (−44%)</b>, 45% drawdown</td>
+</tr>
+<tr>
+<td>🐉 <b>hoarding_crash</b></td>
+<td>Supply shock concentrates stock with the Hoarder → price spiked to $30 → hard crash to $13.</td>
+<td>Gains given back on the crash</td>
+</tr>
+<tr>
+<td>🫧 <b>speculator_bubble</b></td>
+<td>7 ticks of rising prices feed a Speculator frenzy → a −42% reversal flips it into a panic seller.</td>
+<td>Self-reinforcing bubble → bust</td>
+</tr>
+</table>
 
-A sudden price shock at tick 8 (-28%) breaches PanicAgent's -10% threshold. All panic-capable agents dump simultaneously. Hoarder lowball bids absorb supply at distressed prices. Speculator, caught long, becomes a forced seller for the next 8 ticks. Liquidity drain and price crash anomalies fire automatically.
-
-```
-Price: $21.89 -> $12.01  (-44%)   Volatility: $4.46   Drawdown: 45%
-Panic-01 PnL: -30%  (bought the spike, sold the crash)
-Rational-01: -16%   (bought too early on the way down)
-```
-
-### Hoarding Crash (`--scenario hoarding_crash`)
-Supply shock at tick 5 concentrates inventory with the hoarder. Price injects spike the market to $30 at tick 10, then crash to $13 at tick 15. Agents who held through the spike give back all gains on the crash.
-
-### Speculator Bubble (`--scenario speculator_bubble`)
-Seven ticks of rising price injects feed a Speculator buying frenzy. Rational sees overvaluation and sells. At tick 9, a hard reversal (-42%) flips the Speculator into a panic seller and triggers a cascade.
-
----
-
-## Architecture
-
-### Simulation 1 — Agent Zoo
-
-```
-Tick loop:
-  Phase 0: Scenario interventions (price_inject, supply_shock, ...)
-  Phase 1: Bilateral haggling (HaggleCoordinator)
-  Phase 2: Order book matching (bid/ask)
-  Phase 3: Settlement + contagion broadcast
-  Phase 4: Event emission (TRADE, TICK_SUMMARY -> EventBus -> consumers)
-  Phase 5: Metrics recording
-
-Agents:  MarketMaker  Speculator  Hoarder  Panic  Rational
-         think() + act() + haggle_intent() per tick
-```
-
-### Simulation 2 — Hybrid NPC Market
-
-```
-Same tick loop as Sim 1, but each HybridNPC runs internally:
-
-  PersonalityProfile.run_contest()
-    -> raw activation signal per archetype  (0-1)
-    -> mood deltas (streak, volatility, cash pressure, contagion)
-    -> weighted scores  ->  winner
-
-  winner.think() + winner.act() + winner.haggle_intent()
-    -> logged with full activation contest header
-    -> MOOD SWING alert if dominant archetype changed vs last tick
+```bash
+python main.py --sim zoo --ticks 25 --scenario panic_cascade --events --metrics --quiet
 ```
 
 ---
 
-## File Structure
+## 🏗️ Architecture
+
+**The tick loop** — every tick flows through these phases:
+
+```
+🏭 Produce ─▶ 💵 Payroll ─▶ 💣 Scenario ─▶ 🤝 Haggle ─▶ 📖 Order book
+   ─▶ ✅ Settle (+ 🦠 contagion) ─▶ 🍽️ Consume (+ ☠️ death) ─▶ 📡 Events ─▶ 📊 Metrics
+```
+
+**Hybrid NPCs** add an internal contest before they act:
+
+```
+PersonalityProfile.run_contest()
+   ├─ raw activation signal per archetype        (0–1)
+   ├─ mood deltas (streak, volatility, cash, contagion)
+   └─ weighted scores ──▶ 🏆 winner
+              │
+              ▼
+   winner.think() + act() + haggle_intent()
+   └─ logs the full contest + a 🎭 MOOD SWING alert if the winner changed
+```
+
+---
+
+## 🗺️ Roadmap
+
+**All 9 phases complete** ✅ — click any phase for details.
+
+| Phase | Title | Status |
+|:---:|---|:---:|
+| 1 | Core Market Engine | ✅ |
+| 2 | Agent Zoo (5 archetypes) | ✅ |
+| 3 | Haggling / Negotiation Protocol | ✅ |
+| 4 | Event Pipeline + Anomaly Detection | ✅ |
+| 5 | Stress Testing & Scenarios | ✅ |
+| 6 | Interactive GUI (Textual TUI) | ✅ |
+| 7 | Consumption, Survival & Death | ✅ |
+| 8 | Salaries / Cash Recirculation | ✅ |
+| 9 | Price Anchoring & Trade Talk | ✅ |
+
+<details>
+<summary><b>📦 Phase 1 — Core Market Engine</b></summary>
+
+- Central order book (bid/ask matching, midpoint price discovery, self-trade prevention)
+- Tick-based loop with per-tick market state snapshots
+- Agent base class: inventory, cash, `think()` + `act()`, `on_trade()` settlement
+- Cash/inventory conservation
+- CLI (`--sim`, `--ticks`, `--agents`, `--seed`, `--quiet`)
+- 75 unit tests
+
+</details>
+
+<details>
+<summary><b>🧠 Phase 2 — Agent Zoo</b></summary>
+
+- Five distinct archetypes with full thought-process output
+- `_pending_orders` pattern — `think()` decides, `act()` executes (log always matches action)
+- `initial_price_history` seeding so all agents activate from tick 1
+- 42 behavioral tests
+
+</details>
+
+<details>
+<summary><b>🤝 Phase 3 — Haggling / Negotiation Protocol</b></summary>
+
+- `HaggleIntent` — direction + ideal price + worst-acceptable price + quantity
+- `HaggleSession` — N-round concession negotiation
+- `HaggleCoordinator` — pairs compatible buyers/sellers, one session per agent per tick
+- Per-archetype `haggle_intent()` overrides; `HybridNPC` delegates to its winner
+- Pre-tick phase: bilateral trades settle before the order book runs
+- `--haggle` flag · 42 tests
+
+</details>
+
+<details>
+<summary><b>📡 Phase 4 — Event Pipeline</b></summary>
+
+- `EventType` + `MarketEvent` typed schema (trades, tick summaries, anomalies)
+- `EventBus` — in-process publish/subscribe
+- `AuditConsumer` (full history → JSONL) + `AnomalyDetector` (cascades, drain, crash/spike, storms)
+- `--events` (inline red anomaly alerts) · `--audit <path>` · 39 tests
+
+</details>
+
+<details>
+<summary><b>💥 Phase 5 — Stress Testing & Scenarios</b></summary>
+
+- `ScenarioEvent` + `ScenarioRunner` — timed interventions
+- Four actions: `supply_shock`, `demand_surge`, `agent_collapse`, `price_inject`
+- Three named failure-mode scenarios
+- `MetricsCollector` + `gini()`, `price_volatility()`, `max_drawdown()`
+- `--scenario`, `--metrics` flags · 59 tests
+
+</details>
+
+<details>
+<summary><b>🎮 Phase 6 — Interactive GUI</b></summary>
+
+- `GUILogger` — callback bridge (drop-in for `ThoughtLogger`)
+- `SimulatorApp` — Textual TUI, multi-panel live layout
+- Engine refactor to `prepare()` / `step()` / `finalize()`; semaphore-driven worker thread
+- **Per-thought pacing** + **five live speed tiers** (`+`/`-` keys or dropdown)
+- `--gui` flag
+
+</details>
+
+<details>
+<summary><b>🍽️ Phase 7 — Consumption, Survival & Death</b></summary>
+
+- Consumption ration each tick (`--consume`); survival bidding when runway is short
+- Death after `starvation_limit` consecutive starved ticks
+- `ProducerAgent` mints + sells surplus (keeps its own reserve)
+- Consumers start on bare-minimum inventory
+- Metrics: consumed, starvation ticks, deaths/survivors; final ALIVE/DEAD table · 41 tests
+
+</details>
+
+<details>
+<summary><b>💵 Phase 8 — Salaries / Cash Recirculation</b></summary>
+
+- Payroll phase: employers pay each living worker a wage (`--salary`)
+- Affordable-split when employer can't cover the bill; **cash conserved**
+- `is_employer` flag; dead workers aren't paid
+- Metrics: total wages, per-agent `wages_received` / `wages_paid` · 10 tests
+
+</details>
+
+<details>
+<summary><b>⚓ Phase 9 — Price Anchoring & Trade Talk</b></summary>
+
+- Cost-plus price anchor (`base_cost × (1 + margin)`) — tames runaway inflation
+- Survival bids reference the current best ask, not the runaway last price
+- Sustainable steady state reachable (`--consume 3 --salary 70` → 0 deaths)
+- **Trade Talk** — archetype-flavoured dialogue on every trade; dedicated GUI panel · 3 tests
+
+</details>
+
+---
+
+## 📁 Project Structure
 
 ```
 Simple-market-simulator/
-|
-+-- main.py                        # CLI entry point
-+-- requirements.txt
-|
-+-- market/
-|   +-- models.py                  # Order, Trade, MarketState dataclasses
-|   +-- order_book.py              # Bid/ask matching, price discovery
-|   +-- engine.py                  # Tick loop (5 phases), settlement
-|   +-- haggle.py                  # HaggleIntent, HaggleSession, HaggleCoordinator
-|   +-- events.py                  # EventType, MarketEvent, EventBus
-|   +-- consumers.py               # AuditConsumer, AnomalyDetector
-|   +-- metrics.py                 # gini(), volatility(), MetricsCollector, RunMetrics
-|   +-- scenarios.py               # ScenarioEvent, ScenarioRunner, named scenarios
-|
-+-- agents/
-|   +-- base.py                    # Abstract Agent: think(), act(), haggle_intent()
-|   +-- random_agent.py            # Baseline random agent
-|   +-- market_maker.py            # Sim 1 archetype
-|   +-- speculator.py              # Sim 1 archetype
-|   +-- hoarder.py                 # Sim 1 archetype
-|   +-- panic.py                   # Sim 1 archetype
-|   +-- rational.py                # Sim 1 archetype
-|   +-- producer.py                # Supply-side agent (mints + sells stock)
-|   +-- hybrid/
-|       +-- activation.py          # Per-archetype activation signal functions (0-1)
-|       +-- mood.py                # Streak, volatility, cash, contagion modifiers
-|       +-- personality.py         # PersonalityProfile + ContestResult
-|       +-- npc.py                 # HybridNPC: delegates to winning archetype
-|       +-- roster.py              # Named NPCs: Iris, Marcus, Dex, Vera, Rex
-|
-+-- logger/
-|   +-- thought_logger.py          # Rich output: thoughts, trades, haggle, anomalies,
-|                                  #              scenarios, metrics tables
-|
-+-- gui/
-|   +-- app.py                     # Textual TUI: SimulatorApp (4-panel layout + worker)
-|   +-- logger.py                  # GUILogger: callback-based bridge to UI widgets
-|
-+-- tests/
-    +-- test_models.py             # MarketState properties, dataclass fields
-    +-- test_order_book.py         # Matching, priority, self-trade, depth
-    +-- test_base_agent.py         # Settlement, trade_count, net_worth
-    +-- test_random_agent.py       # Determinism, think/act consistency
-    +-- test_engine.py             # Conservation laws, tick counter, price history
-    +-- test_agents_zoo.py         # 42 behavioral tests for all 5 archetypes
-    +-- test_haggle.py             # Session, coordinator, per-agent intents
-    +-- test_events.py             # Schema, bus routing, audit, anomaly detection
-    +-- test_metrics.py            # gini, volatility, drawdown, MetricsCollector
-    +-- test_scenarios.py          # ScenarioRunner, all actions, predefined scenarios
-    +-- test_consumption.py        # consume(), runway(), survival_order(), death streak
-    +-- test_producer.py           # ProducerAgent mint/sell/reserve + sustainability
-    +-- test_salary.py             # payroll transfer, conservation, death reduction
-    +-- test_hybrid/
-        +-- test_activation.py     # All 5 activation signal functions
-        +-- test_mood.py           # All 4 mood modifier types
-        +-- test_personality.py    # Contest logic, weight normalisation
-        +-- test_npc.py            # HybridNPC interface, panic FSM, contagion
+│
+├── main.py                     # CLI entry point
+├── requirements.txt
+│
+├── market/                     # 🏛️ Core engine
+│   ├── models.py               #   Order, Trade, MarketState
+│   ├── order_book.py           #   Bid/ask matching, price discovery
+│   ├── engine.py               #   Tick loop, settlement, all phases
+│   ├── haggle.py               #   HaggleIntent, Session, Coordinator
+│   ├── events.py               #   EventType, MarketEvent, EventBus
+│   ├── consumers.py            #   AuditConsumer, AnomalyDetector
+│   ├── metrics.py              #   gini(), volatility(), MetricsCollector
+│   └── scenarios.py            #   ScenarioRunner + named scenarios
+│
+├── agents/                     # 🤖 Decision logic
+│   ├── base.py                 #   Abstract Agent (think/act/consume/produce…)
+│   ├── market_maker.py · speculator.py · hoarder.py
+│   ├── panic.py · rational.py · producer.py
+│   ├── random_agent.py         #   Baseline
+│   └── hybrid/                 # 🎭 Simulation 2
+│       ├── activation.py       #   Per-archetype signal functions
+│       ├── mood.py             #   Streak / volatility / cash / contagion
+│       ├── personality.py      #   PersonalityProfile + ContestResult
+│       ├── npc.py              #   HybridNPC (delegates to winner)
+│       └── roster.py           #   Iris, Marcus, Dex, Vera, Rex (+ Producer)
+│
+├── logger/
+│   └── thought_logger.py       # 🎨 Rich CLI output
+│
+├── gui/                        # 🎮 Textual TUI
+│   ├── app.py                  #   SimulatorApp (panels + worker)
+│   └── logger.py               #   GUILogger (callback bridge)
+│
+└── tests/                      # 🧪 389 tests across 17 files
+    ├── test_models · order_book · base_agent · random_agent · engine
+    ├── test_agents_zoo · haggle · events · metrics · scenarios
+    ├── test_consumption · producer · salary
+    └── test_hybrid/  (activation · mood · personality · npc)
 ```
 
 ---
 
-## Getting Started
-
-```bash
-# (Recommended) create and activate a virtual environment
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS / Linux
-
-# Install dependencies (rich, pytest, textual)
-pip install -r requirements.txt
-
-# Run the random baseline (4 agents, 20 ticks)
-python main.py
-
-# Run Simulation 1 -- Agent Zoo
-python main.py --sim zoo --ticks 30
-
-# Run Simulation 2 -- Hybrid NPCs
-python main.py --sim hybrid --ticks 30
-
-# Enable bilateral haggling (pre-market negotiation)
-python main.py --sim zoo --ticks 20 --haggle
-
-# Enable event pipeline + inline anomaly warnings
-python main.py --sim zoo --ticks 50 --events
-
-# Write full JSONL audit trail to disk
-python main.py --sim hybrid --ticks 100 --events --audit audit.jsonl
-
-# Survival economy: agents consume each tick, the Producer supplies the market
-python main.py --sim zoo --ticks 20 --consume 4 --metrics --quiet
-python main.py --sim zoo --ticks 30 --consume 4 --events            # show liquidity-drain anomalies
-
-# Cash recirculation: the Producer pays wages so workers stay solvent
-python main.py --sim zoo --ticks 20 --consume 2 --salary 15 --metrics --quiet
-
-# Sustainable steady state: anchored price + living wage => nobody dies
-python main.py --sim zoo --ticks 25 --consume 3 --salary 70 --metrics --quiet
-
-# Stress-test with a named scenario
-python main.py --sim zoo --ticks 25 --scenario panic_cascade --events --metrics --quiet
-python main.py --sim zoo --ticks 25 --scenario hoarding_crash --metrics --quiet
-python main.py --sim zoo --ticks 20 --scenario speculator_bubble --metrics --quiet
-
-# Full kitchen-sink run (CLI)
-python main.py --sim hybrid --ticks 30 --haggle --events --metrics --scenario panic_cascade
-
-# Launch the interactive GUI (Textual TUI)
-python main.py --gui
-python main.py --gui --sim zoo --ticks 30
-python main.py --gui --sim hybrid --ticks 20 --haggle
-python main.py --gui --sim zoo --ticks 25 --scenario panic_cascade
-python main.py --gui --sim hybrid --ticks 30 --scenario speculator_bubble --haggle
-
-# Run all 389 tests
-python -m pytest tests/ -v
-```
-
-> **Tip:** In the GUI, press `Space` to run, then tap `-` a few times to slow it down
-> and watch each agent reason in turn. Speed adjusts live — no need to pause or restart.
-
----
-
-## CLI Reference
+## 🎛️ CLI Reference
 
 | Flag | Values | Description |
 |---|---|---|
-| `--sim` | `random` `zoo` `hybrid` | Simulation mode (default: `random`) |
-| `--ticks` | integer | Number of simulation ticks (default: 20) |
-| `--agents` | integer | Number of agents in random mode (default: 4) |
-| `--seed` | integer | Random seed for random mode (default: 42) |
+| `--sim` | `random` · `zoo` · `hybrid` | Simulation mode (default: `random`) |
+| `--ticks` | int | Number of ticks (default: 20) |
+| `--agents` | int | Agents in random mode (default: 4) |
+| `--seed` | int | Random seed (default: 42) |
 | `--quiet` | flag | Hide per-agent thought logs |
-| `--haggle` | flag | Enable pre-market bilateral haggling phase |
+| `--haggle` | flag | Enable pre-market bilateral haggling |
 | `--events` | flag | Enable event pipeline + inline anomaly detection |
-| `--audit` | file path | Write JSONL audit trail to disk (requires `--events`) |
-| `--metrics` | flag | Show run metrics summary + per-agent PnL at end |
-| `--scenario` | `hoarding_crash` `panic_cascade` `speculator_bubble` | Inject a named stress-test scenario |
-| `--consume` | float (e.g. `4`) | Per-tick survival consumption rate for every agent; drives survival bidding and starvation/death. CLI default off; GUI defaults to High |
-| `--salary` | float (e.g. `10`) | Wage the Producer pays each worker per tick; recirculates cash. CLI default off; GUI defaults to On |
-| `--gui` | flag | Launch the interactive Textual TUI instead of CLI output |
+| `--audit` | path | Write JSONL audit trail (needs `--events`) |
+| `--metrics` | flag | Show metrics summary + per-agent PnL |
+| `--scenario` | `hoarding_crash` · `panic_cascade` · `speculator_bubble` | Inject a stress scenario |
+| `--consume` | float | Per-tick survival ration (drives survival/death). CLI off; GUI defaults Med |
+| `--salary` | float | Wage paid per worker per tick (recirculates cash). CLI off; GUI defaults living wage |
+| `--gui` | flag | Launch the interactive Textual TUI |
 
-### GUI keyboard shortcuts
+<details>
+<summary><b>📋 More example commands</b></summary>
 
-| Key | Action |
-|---|---|
-| `Space` | Start / Pause |
-| `S` | Step one tick |
-| `R` | Reset simulation |
-| `+` | Speed up one tier |
-| `-` | Slow down one tier |
-| `Q` | Quit |
+```bash
+# Survival economy + liquidity-drain anomalies
+python main.py --sim zoo --ticks 30 --consume 4 --events
 
-Speed can also be changed live from the dropdown in the control panel. The five tiers (Very Slow → Slow → Normal → Fast → Instant) set how long each agent's reasoning lingers before the next agent thinks.
+# Sustainable steady state (nobody dies)
+python main.py --sim zoo --ticks 25 --consume 3 --salary 70 --metrics --quiet
+
+# Full kitchen-sink CLI run
+python main.py --sim hybrid --ticks 30 --haggle --events --metrics --scenario panic_cascade
+
+# GUI with a scenario pre-loaded
+python main.py --gui --sim zoo --scenario panic_cascade
+
+# Run the whole test suite
+python -m pytest tests/ -v
+```
+
+</details>
 
 ---
 
-## Tech Stack
+## 🛠️ Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Simulation core | Python 3.11+ |
-| Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
-| CLI output | `rich` (terminal panels, tables, colour) |
-| Interactive GUI | `textual` (Textual TUI — 4-panel live layout, worker thread) |
-| Testing | `pytest` — 389 tests across 17 files |
+| 🐍 Simulation core | Python 3.11+ (stdlib only) |
+| 📡 Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
+| 🎨 CLI output | [`rich`](https://github.com/Textualize/rich) — panels, tables, colour |
+| 🎮 Interactive GUI | [`textual`](https://github.com/Textualize/textual) — live multi-panel TUI |
+| 🧪 Testing | [`pytest`](https://pytest.org) — **389 tests** across 17 files |
+
+---
+
+<div align="center">
+
+### 🧩 Key Concepts
+
+**Price Equilibrium Stress Testing** · **Autonomous Haggling** · **Systemic Liquidity Risk** · **Survival Economics**
+
+*Built phase by phase — from a bare order book to a self-sustaining economy that you can break on demand.*
+
+</div>
