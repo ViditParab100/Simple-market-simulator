@@ -116,10 +116,13 @@ class Agent(ABC):
         if runway >= self.survival_threshold:
             return None  # comfortable buffer — no panic buying
 
-        price = state.last_price or _DEFAULT_PRICE
+        # Reference the cheapest available offer, not the (possibly runaway) last
+        # trade price. Bidding a small premium over the current best ask is enough
+        # to win supply without spiralling prices upward each tick.
+        reference = state.best_ask if state.best_ask is not None else (state.last_price or _DEFAULT_PRICE)
         # urgency 0..1: 0 at the threshold, ~1 when out of stock
         urgency   = max(0.0, min(1.0, (self.survival_threshold - runway) / self.survival_threshold))
-        bid_price = round(price * (1.0 + 0.05 + 0.20 * urgency), 2)  # 5%..25% over market
+        bid_price = round(reference * (1.0 + 0.03 + 0.12 * urgency), 2)  # 3%..15% over best ask
 
         # Aim to top back up to a full threshold buffer
         target_units = math.ceil(self.consumption_rate * self.survival_threshold)
@@ -130,6 +133,15 @@ class Agent(ABC):
         if qty <= 0:
             return None
         return Order(self.agent_id, OrderSide.BID, bid_price, qty, state.tick)
+
+    def trade_remark(self, role: str, price: float, qty: int) -> str:
+        """
+        A short line the agent 'says' when it completes a trade.
+        role is 'buyer' or 'seller'. Overridden per archetype for flavour.
+        """
+        if role == "buyer":
+            return f"Bought {qty} @ ${price:.2f}."
+        return f"Sold {qty} @ ${price:.2f}."
 
     def net_worth(self, market_price: float) -> float:
         return self.cash + self.inventory * market_price

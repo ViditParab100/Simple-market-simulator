@@ -83,6 +83,11 @@ class RationalAgent(Agent):
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
 
+    def trade_remark(self, role: str, price: float, qty: int) -> str:
+        if role == "buyer":
+            return f"${price:.2f} is below fair value — picking up {qty}. Patience pays."
+        return f"${price:.2f} is above fair value — trimming {qty}. Discipline."
+
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         fv = self._fair_value(state)
         if fv is None:

@@ -97,11 +97,12 @@ _CONSUME_OPTIONS = [
 ]
 
 # Wage paid by the Producer to each worker per tick — recirculates cash so
-# consumers stay solvent instead of going broke and starving.
+# consumers stay solvent instead of going broke and starving. A "living wage"
+# (roughly ration x price) sustains the whole economy indefinitely.
 _SALARY_OPTIONS = [
-    ("Salary: Off",        "0"),
-    ("Salary: $10/tick",   "10"),
-    ("Salary: $20/tick",   "20"),
+    ("Salary: Off",            "0"),
+    ("Salary: $30 (low)",      "30"),
+    ("Salary: $70 (living)",   "70"),
 ]
 
 
@@ -182,8 +183,13 @@ Screen {
     height: 1fr;
 }
 
+#bottom-row {
+    layout: horizontal;
+    height: 13;
+}
+
 #console-area {
-    height: 12;
+    width: 1fr;
     border: solid $warning-darken-2;
 }
 
@@ -195,6 +201,23 @@ Screen {
 }
 
 #console-log {
+    height: 1fr;
+    padding: 0 1;
+}
+
+#talk-area {
+    width: 1fr;
+    border: solid $success-darken-2;
+}
+
+#talk-label {
+    background: $success-darken-2;
+    color: $text;
+    padding: 0 1;
+    text-style: bold;
+}
+
+#talk-log {
     height: 1fr;
     padding: 0 1;
 }
@@ -245,16 +268,16 @@ class SimulatorApp(App):
 
     def __init__(self, sim_mode: str = "zoo", scenario: str = "none",
                  ticks: int = 20, speed: str = "normal",
-                 haggle: bool = False, consumption: float = 6.0,
-                 salary: float = 10.0):
+                 haggle: bool = False, consumption: float = 4.0,
+                 salary: float = 70.0):
         super().__init__()
         self._sim_mode    = sim_mode
         self._scenario    = scenario
         self._ticks       = ticks
         self._speed       = speed
         self._haggle      = haggle
-        self._consumption = consumption   # GUI defaults to High so survival is visible
-        self._salary      = salary        # GUI defaults to On so recirculation is visible
+        self._consumption = consumption   # GUI default: Med consumption ...
+        self._salary      = salary        # ... + living wage => mostly sustainable
 
         # Engine + GUI bridge
         self._engine:    Optional[SimulationEngine] = None
@@ -280,7 +303,7 @@ class SimulatorApp(App):
 
     def _salary_value(self) -> str:
         v = str(int(self._salary))
-        return v if v in {"0", "10", "20"} else "10"
+        return v if v in {"0", "30", "70"} else "70"
 
     # ── Compose ───────────────────────────────────────────────────────────────
 
@@ -327,12 +350,18 @@ class SimulatorApp(App):
                 yield Label("Agents", classes="section-title")
                 yield DataTable(id="agent-table", show_cursor=False)
 
-        # Bottom: console log
-        with Vertical(id="console-area"):
-            yield Label(" Console Log  (trades | haggle | anomalies | scenarios)",
-                        id="console-label")
-            yield RichLog(id="console-log", highlight=True, markup=True,
-                          auto_scroll=True)
+        # Bottom: console log (left) + trade talk (right)
+        with Horizontal(id="bottom-row"):
+            with Vertical(id="console-area"):
+                yield Label(" Console Log  (trades | haggle | anomalies | scenarios | payroll)",
+                            id="console-label")
+                yield RichLog(id="console-log", highlight=True, markup=True,
+                              auto_scroll=True)
+            with Vertical(id="talk-area"):
+                yield Label(" Trade Talk  (what agents say as they deal)",
+                            id="talk-label")
+                yield RichLog(id="talk-log", highlight=True, markup=True,
+                              wrap=True, auto_scroll=True)
 
         yield Footer()
 
@@ -388,6 +417,9 @@ class SimulatorApp(App):
 
         lg.on_death = lambda agent_id, tick: \
             self.call_from_thread(self._show_death, agent_id, tick)
+
+        lg.on_trade_talk = lambda tick, trade, talk: \
+            self.call_from_thread(self._show_trade_talk, tick, trade, talk)
 
         lg.on_final_state = lambda agents, lp: \
             self.call_from_thread(self._show_final_state, agents, lp)
@@ -751,6 +783,14 @@ class SimulatorApp(App):
             f"{agent_id} starved — out for the count"
         )
 
+    def _show_trade_talk(self, tick: int, trade, talk: list):
+        log = self.query_one("#talk-log", RichLog)
+        log.write(
+            f"[dim]\\[{tick:02d}] {trade.quantity} @ ${trade.price:.2f}[/dim]"
+        )
+        for agent_id, remark in talk:
+            log.write(f"  [bold]{agent_id}:[/bold] [italic]{remark}[/italic]")
+
     def _show_final_state(self, agents, last_price):
         clog = self.query_one("#console-log", RichLog)
         clog.write("\n[bold cyan]--- Final State ---[/bold cyan]")
@@ -836,7 +876,7 @@ class SimulatorApp(App):
 
 def launch(sim_mode: str = "zoo", scenario: str = "none",
            ticks: int = 20, speed: str = "normal", haggle: bool = False,
-           consumption: float = 6.0, salary: float = 10.0):
+           consumption: float = 4.0, salary: float = 70.0):
     app = SimulatorApp(
         sim_mode=sim_mode,
         scenario=scenario,

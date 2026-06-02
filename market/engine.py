@@ -274,12 +274,23 @@ class SimulationEngine:
 
     def _settle(self, trades: list[Trade], haggle: bool = False):
         for trade in trades:
-            if trade.buyer_id in self._agent_map:
-                self._agent_map[trade.buyer_id].on_trade(trade)
-            if trade.seller_id in self._agent_map:
-                self._agent_map[trade.seller_id].on_trade(trade)
+            buyer  = self._agent_map.get(trade.buyer_id)
+            seller = self._agent_map.get(trade.seller_id)
+            if buyer:
+                buyer.on_trade(trade)
+            if seller:
+                seller.on_trade(trade)
+
+            # Trade dialogue — each party 'speaks' as it transacts
+            talk: list[tuple[str, str]] = []
+            if buyer:
+                talk.append((buyer.agent_id, buyer.trade_remark("buyer", trade.price, trade.quantity)))
+            if seller:
+                talk.append((seller.agent_id, seller.trade_remark("seller", trade.price, trade.quantity)))
+            if talk:
+                self.logger.log_trade_talk(self.tick, trade, talk)
+
             if self.event_bus:
-                buyer = self._agent_map.get(trade.buyer_id)
                 self.event_bus.publish(trade_event(
                     trade,
                     buyer_inventory=buyer.inventory if buyer else 0,

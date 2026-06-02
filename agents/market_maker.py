@@ -72,6 +72,11 @@ class MarketMakerAgent(Agent):
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
 
+    def trade_remark(self, role: str, price: float, qty: int) -> str:
+        if role == "buyer":
+            return f"Filled {qty} on the bid @ ${price:.2f} — working the spread."
+        return f"Lifted {qty} on the offer @ ${price:.2f} — capturing the spread."
+
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         price = state.last_price or _DEFAULT_PRICE
         spread = self.base_spread

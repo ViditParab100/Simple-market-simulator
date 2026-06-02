@@ -105,6 +105,12 @@ class ThoughtLogger:
             f"@ [bold green]${trade.price:.2f}[/bold green]"
         )
 
+    def log_trade_talk(self, tick: int, trade: Trade, talk: list):
+        if not self.verbose:
+            return
+        for agent_id, remark in talk:
+            console.print(f"    [italic dim]{agent_id}:[/italic dim] [italic]\"{remark}\"[/italic]")
+
     def log_tick_summary(
         self,
         tick: int,

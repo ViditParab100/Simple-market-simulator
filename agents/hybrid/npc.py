@@ -134,6 +134,14 @@ class HybridNPC(Agent):
         delegate = self._build_delegate(self._last_winner)
         return delegate.haggle_intent(state)
 
+    def trade_remark(self, role: str, price: float, qty: int) -> str:
+        """Speak in the voice of whichever archetype is currently dominant."""
+        if self._last_winner is None:
+            return super().trade_remark(role, price, qty)
+        delegate = self._build_delegate(self._last_winner)
+        voice = delegate.trade_remark(role, price, qty)
+        return f"({self._last_winner.value}) {voice}"
+
     @property
     def dominant_archetype(self) -> ArchetypeTag | None:
         return self._last_winner

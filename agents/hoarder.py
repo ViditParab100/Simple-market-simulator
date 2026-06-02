@@ -66,6 +66,11 @@ class HoarderAgent(Agent):
     def act(self, state: MarketState) -> list[Order]:
         return self._pending_orders
 
+    def trade_remark(self, role: str, price: float, qty: int) -> str:
+        if role == "buyer":
+            return f"Mine now — {qty} more units secured at ${price:.2f}. Never enough."
+        return f"Parting with {qty}? Only because ${price:.2f} was too good to refuse."
+
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         shortfall = self.hoard_target - self.inventory
         if shortfall <= 0:

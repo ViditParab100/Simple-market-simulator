@@ -57,15 +57,22 @@ def test_producer_sells_entire_stock():
     _, orders = run(p, state(20.0))
     assert orders[0].quantity == 12
 
-def test_producer_ask_below_market():
-    p = ProducerAgent("P", inventory=10, cash=100.0, sell_discount=0.98)
+def test_producer_ask_anchored_to_cost_plus():
+    # Cost-plus anchor: ignores the market price entirely
+    p = ProducerAgent("P", inventory=10, cash=100.0, base_cost=20.0, margin=0.05)
     _, orders = run(p, state(20.0))
-    assert orders[0].price < 20.0
+    assert orders[0].price == pytest.approx(21.0)   # 20 * 1.05
+
+def test_producer_anchor_ignores_market_frenzy():
+    # Even when the market has run away to $40, the producer still asks ~cost+margin
+    p = ProducerAgent("P", inventory=10, cash=100.0, base_cost=20.0, margin=0.05)
+    _, orders = run(p, state(40.0))
+    assert orders[0].price == pytest.approx(21.0)
 
 def test_producer_respects_floor_price():
-    p = ProducerAgent("P", inventory=10, cash=100.0, sell_discount=0.98, floor_price=50.0)
+    p = ProducerAgent("P", inventory=10, cash=100.0, base_cost=2.0, margin=0.05, floor_price=50.0)
     _, orders = run(p, state(20.0))
-    assert orders[0].price == 50.0   # floor overrides the discount
+    assert orders[0].price == 50.0   # floor overrides the (low) anchor
 
 def test_producer_holds_when_empty():
     p = ProducerAgent("P", inventory=0, cash=100.0)
@@ -105,6 +112,34 @@ def test_producer_haggle_intent_is_ask():
     intent = p.haggle_intent(state(20.0))
     assert intent is not None
     assert intent.side == OrderSide.ASK
+
+def test_producer_trade_remark():
+    p = ProducerAgent("P", inventory=10, cash=100.0)
+    assert isinstance(p.trade_remark("seller", 21.0, 5), str)
+
+def test_anchor_tames_inflation():
+    """
+    The cost-plus anchor should keep the end price far below the runaway levels
+    a last-price-chasing producer would reach under heavy survival demand.
+    """
+    from market.metrics import MetricsCollector
+    agents = [
+        ProducerAgent("Producer", inventory=12, cash=200.0, production_rate=25,
+                      base_cost=20.0, margin=0.05),
+        MarketMakerAgent("MM", inventory=5, cash=400.0),
+        RationalAgent("Ra",    inventory=5, cash=400.0),
+        PanicAgent("Pa",       inventory=6, cash=300.0),
+    ]
+    collector = MetricsCollector()
+    eng = SimulationEngine(
+        agents=agents, logger=ThoughtLogger(verbose=False),
+        initial_price_history=[round(19.0 + i*0.25, 2) for i in range(10)],
+        consumption_rate=4.0, salary=15.0, metrics_collector=collector,
+    )
+    eng.run(20)
+    metrics = collector.compute(agents, eng.order_book.last_price)
+    # Anchored at $21; price should stay reasonably near it, well under runaway $40+
+    assert metrics.price_end < 30.0
 
 
 # ── engine integration: a producer sustains a consuming market ───────────────────

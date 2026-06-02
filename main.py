@@ -88,8 +88,8 @@ def main():
             speed="normal",
             haggle=args.haggle,
             # explicit flags override; otherwise GUI uses its visible defaults
-            consumption=args.consume if args.consume >= 0 else 6.0,
-            salary=args.salary if args.salary >= 0 else 10.0,
+            consumption=args.consume if args.consume >= 0 else 4.0,
+            salary=args.salary if args.salary >= 0 else 70.0,
         )
         return
 
