@@ -26,7 +26,8 @@ thought-process transparency for every agent.
 | [✨ Highlights](#-highlights) | [🚀 Quick Start](#-quick-start) | [🎮 The GUI](#-the-gui) |
 | [🧠 The Agent Zoo](#-the-agent-zoo) | [🎭 Hybrid NPCs](#-hybrid-npcs-simulation-2) | [🤖 LLM-Backed Agents](#-llm-backed-agents) |
 | [🔄 The Survival Economy](#-the-survival-economy) | [💥 Failure Scenarios](#-failure-scenarios) | [🏗️ Architecture](#️-architecture) |
-| [🗺️ Roadmap](#️-roadmap) | [📁 Project Structure](#-project-structure) | [🎛️ CLI Reference](#️-cli-reference) |
+| [🗺️ Roadmap](#️-roadmap) | [🔮 What's Next](#-whats-next--potential-upgrades) | [📁 Project Structure](#-project-structure) |
+| [🎛️ CLI Reference](#️-cli-reference) | [🛠️ Tech Stack](#️-tech-stack) | |
 
 ---
 
@@ -361,7 +362,7 @@ PersonalityProfile.run_contest()
 
 ## 🗺️ Roadmap
 
-**All 9 phases complete** ✅ — click any phase for details.
+**All 10 phases complete** ✅ — click any phase for details.
 
 | Phase | Title | Status |
 |:---:|---|:---:|
@@ -483,6 +484,47 @@ PersonalityProfile.run_contest()
 - `--llm SPEC[,SPEC2]` flag (CLI + GUI) · 35 tests (parsing, mock heuristics, registry, agent, integration)
 
 </details>
+
+---
+
+## 🔮 What's Next — Potential Upgrades
+
+Ideas on the horizon, grouped by theme. Nothing here is built yet — it's the wishlist.
+
+### 🤖 Smarter agents
+- **🧠 Memory & learning** — let LLM agents remember their last N trades, P&L, and regrets, and feed that history into the prompt so they adapt over a run (cheap "in-context learning").
+- **💬 Agent-to-agent negotiation via LLM** — replace the numeric haggle rounds with a short natural-language back-and-forth ("I'll do 5 at $21 if you throw in priority next tick").
+- **🪞 Reflection step** — a post-tick "what did I learn?" call that updates each agent's strategy notes.
+- **🎚️ Tool-calling / structured output** — use provider function-calling/JSON-schema modes for rock-solid decision parsing instead of free-text JSON.
+- **⚡ Async / batched LLM calls** — fire all agents' model calls concurrently per tick to cut wall-clock time dramatically.
+
+### 🏦 Richer economy
+- **📦 Multiple commodities** — food + luxury + raw materials, with substitution and cross-price effects.
+- **🏭 Competing producers** — break the monopoly; let supply-side rivals undercut each other.
+- **🏦 Credit & debt** — lending, interest, leverage, and the bankruptcies/contagion that follow.
+- **💱 A central bank** — money supply, interest-rate policy, and inflation targeting on top of the wage loop.
+- **📈 Taxes & redistribution** — compare Gini outcomes under different fiscal rules.
+- **🧬 Reproduction & inheritance** — surviving agents spawn offspring; wealth/strategy passes on (evolutionary pressure).
+
+### 📊 Analytics & visualization
+- **🌐 Web dashboard** — a browser UI (Plotly/Dash or a small React front-end) with live charts beyond the terminal.
+- **📉 Richer metrics** — order-book depth charts, wealth-distribution Lorenz curves, per-archetype P&L attribution.
+- **🎞️ Replay & scrubbing** — record a run to the audit log and scrub back/forward through ticks.
+- **🆚 Batch experiments** — run N seeds × M configs headless and auto-generate a comparison report.
+
+### 🔌 Infrastructure
+- **📨 Real Kafka** — swap the in-process `EventBus` for an actual broker (the schema is already Kafka-shaped).
+- **💾 Persistence** — SQLite/Parquet trade history for offline analysis in pandas.
+- **🌍 REST/WebSocket API** — drive the sim from external clients; stream events out.
+- **📓 Notebook examples** — Jupyter walkthroughs of each scenario and the survival-economy balance dial.
+
+### 🎮 Experience
+- **🎛️ In-GUI parameter sliders** — tune consumption / salary / production live without restarting.
+- **🏆 Leaderboard mode** — pit LLM models (or human-tuned personas) against each other and score them.
+- **🔊 Narrated mode** — an LLM "market commentator" that summarizes each tick in plain English.
+
+> 💡 **Good first contributions:** async LLM calls, a second commodity, or the web dashboard.
+> Each is self-contained and slots cleanly into the existing phase/`--flag` pattern.
 
 ---
 
