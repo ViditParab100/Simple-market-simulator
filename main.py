@@ -9,6 +9,7 @@ from agents.hoarder import HoarderAgent
 from agents.panic import PanicAgent
 from agents.rational import RationalAgent
 from agents.producer import ProducerAgent
+from agents.llm_agent import build_llm_roster
 from agents.hybrid.roster import build_roster
 from market.haggle import HaggleCoordinator
 from market.events import EventBus, EventType
@@ -75,6 +76,10 @@ def main():
     parser.add_argument("--salary",  type=float, default=-1.0, metavar="WAGE",
                         help="Wage the Producer pays each worker per tick (e.g. 10.0). "
                              "Recirculates cash. Omit for CLI default (off); GUI defaults to On.")
+    parser.add_argument("--llm",     type=str, default=None, metavar="SPEC",
+                        help="Back agents with a language model. e.g. 'mock', "
+                             "'ollama:llama3.2', 'openai:gpt-4o-mini'. Comma-separate "
+                             "multiple specs to run models head-to-head.")
     parser.add_argument("--gui",     action="store_true",
                         help="Launch the interactive Textual GUI")
     args = parser.parse_args()
@@ -90,6 +95,7 @@ def main():
             # explicit flags override; otherwise GUI uses its visible defaults
             consumption=args.consume if args.consume >= 0 else 4.0,
             salary=args.salary if args.salary >= 0 else 70.0,
+            llm=args.llm,
         )
         return
 
@@ -97,7 +103,10 @@ def main():
     consume_rate = args.consume if args.consume >= 0 else 0.0
     salary_rate  = args.salary  if args.salary  >= 0 else 0.0
 
-    if args.sim == "hybrid":
+    if args.llm:
+        agents       = build_llm_roster(args.llm)
+        seed_history = _SEED_HISTORY
+    elif args.sim == "hybrid":
         agents       = build_roster()
         seed_history = _SEED_HISTORY
     elif args.sim == "zoo":

@@ -269,7 +269,7 @@ class SimulatorApp(App):
     def __init__(self, sim_mode: str = "zoo", scenario: str = "none",
                  ticks: int = 20, speed: str = "normal",
                  haggle: bool = False, consumption: float = 4.0,
-                 salary: float = 70.0):
+                 salary: float = 70.0, llm: str | None = None):
         super().__init__()
         self._sim_mode    = sim_mode
         self._scenario    = scenario
@@ -278,6 +278,7 @@ class SimulatorApp(App):
         self._haggle      = haggle
         self._consumption = consumption   # GUI default: Med consumption ...
         self._salary      = salary        # ... + living wage => mostly sustainable
+        self._llm         = llm           # if set, agents are LLM-backed
 
         # Engine + GUI bridge
         self._engine:    Optional[SimulationEngine] = None
@@ -495,6 +496,9 @@ class SimulatorApp(App):
         self._update_market_stats()
 
     def _make_agents(self, sim_mode: str) -> list:
+        if self._llm:
+            from agents.llm_agent import build_llm_roster
+            return build_llm_roster(self._llm)
         if sim_mode == "hybrid":
             return build_roster()
         if sim_mode == "random":
@@ -876,7 +880,7 @@ class SimulatorApp(App):
 
 def launch(sim_mode: str = "zoo", scenario: str = "none",
            ticks: int = 20, speed: str = "normal", haggle: bool = False,
-           consumption: float = 4.0, salary: float = 70.0):
+           consumption: float = 4.0, salary: float = 70.0, llm: str | None = None):
     app = SimulatorApp(
         sim_mode=sim_mode,
         scenario=scenario,
@@ -885,5 +889,6 @@ def launch(sim_mode: str = "zoo", scenario: str = "none",
         haggle=haggle,
         consumption=consumption,
         salary=salary,
+        llm=llm,
     )
     app.run()
