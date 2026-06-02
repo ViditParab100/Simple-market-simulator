@@ -8,6 +8,7 @@ from agents.speculator import SpeculatorAgent
 from agents.hoarder import HoarderAgent
 from agents.panic import PanicAgent
 from agents.rational import RationalAgent
+from agents.producer import ProducerAgent
 from agents.hybrid.roster import build_roster
 from market.haggle import HaggleCoordinator
 from market.events import EventBus, EventType
@@ -34,12 +35,15 @@ def build_random_agents(n: int, seed: int) -> list:
 
 
 def build_zoo_agents() -> list:
+    # Consumers start on bare-minimum inventory — they depend on the Producer
+    # for supply. The Producer mints fresh units every tick.
     return [
-        MarketMakerAgent("MarketMaker-01", inventory=30, cash=800.0),
-        SpeculatorAgent("Speculator-01",   inventory=10, cash=600.0),
-        HoarderAgent("Hoarder-01",         inventory=20, cash=1000.0, hoard_target=60),
-        PanicAgent("Panic-01",             inventory=40, cash=300.0),
-        RationalAgent("Rational-01",       inventory=25, cash=500.0),
+        ProducerAgent("Producer-01",       inventory=10, cash=200.0, production_rate=10),
+        MarketMakerAgent("MarketMaker-01", inventory=5,  cash=800.0),
+        SpeculatorAgent("Speculator-01",   inventory=4,  cash=600.0),
+        HoarderAgent("Hoarder-01",         inventory=4,  cash=1000.0, hoard_target=60),
+        PanicAgent("Panic-01",             inventory=6,  cash=300.0),
+        RationalAgent("Rational-01",       inventory=5,  cash=500.0),
     ]
 
 
@@ -65,6 +69,8 @@ def main():
                         help="Show run metrics summary at end")
     parser.add_argument("--scenario", choices=list(NAMED_SCENARIOS.keys()), default=None,
                         help="Inject a named stress-test scenario")
+    parser.add_argument("--consume", type=float, default=0.0, metavar="RATE",
+                        help="Per-tick survival consumption rate for every agent (e.g. 2.0)")
     parser.add_argument("--gui",     action="store_true",
                         help="Launch the interactive Textual GUI")
     args = parser.parse_args()
@@ -77,6 +83,7 @@ def main():
             ticks=args.ticks,
             speed="normal",
             haggle=args.haggle,
+            consumption=args.consume,
         )
         return
 
@@ -115,6 +122,7 @@ def main():
         event_bus=bus,
         scenario_runner=scenario,
         metrics_collector=collector,
+        consumption_rate=args.consume,
     )
     engine.run(ticks=args.ticks)
 

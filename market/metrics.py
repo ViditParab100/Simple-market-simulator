@@ -83,6 +83,8 @@ class AgentSummary:
     net_worth_start: float
     net_worth_end:   float
     trade_count:     int
+    consumed:        float = 0.0   # lifetime units consumed for survival
+    starved_ticks:   int   = 0     # ticks the agent couldn't meet its ration
 
     @property
     def pnl(self) -> float:
@@ -114,6 +116,10 @@ class RunMetrics:
     # Wealth distribution
     gini_start: float
     gini_end:   float
+
+    # Consumption / survival
+    total_consumed:    float = 0.0
+    total_starvation:  int   = 0
 
     # Per-agent
     agents: list[AgentSummary] = field(default_factory=list)
@@ -177,6 +183,8 @@ class MetricsCollector:
                 net_worth_start=self._initial_worths.get(a.agent_id, 0.0),
                 net_worth_end=a.net_worth(price),
                 trade_count=a.trade_count,
+                consumed=getattr(a, "consumed_total", 0.0),
+                starved_ticks=getattr(a, "starved_ticks", 0),
             )
             for a in agents
         ]
@@ -194,5 +202,7 @@ class MetricsCollector:
             total_volume     = sum(r.volume for r in self._records),
             gini_start       = gini(worths_start),
             gini_end         = gini(worths_end),
+            total_consumed   = sum(s.consumed for s in agent_sums),
+            total_starvation = sum(s.starved_ticks for s in agent_sums),
             agents           = agent_sums,
         )

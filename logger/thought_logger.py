@@ -58,6 +58,19 @@ class ThoughtLogger:
         console.print(thought_lines)
         console.print(order_block)
 
+    def log_production(self, tick: int, total_produced: float):
+        if not self.verbose:
+            return
+        console.print(f"\n  [bold green]+ PRODUCED[/bold green] {total_produced:.0f} units into the market")
+
+    def log_consumption(self, tick: int, total_consumed: float, starving: list[str]):
+        if not self.verbose:
+            return
+        msg = f"\n  [blue]~ CONSUMED[/blue] {total_consumed:.1f} units this tick"
+        if starving:
+            msg += f"  [bold red](STARVING: {', '.join(starving)})[/bold red]"
+        console.print(msg)
+
     def log_anomaly(self, description: str, tick: int):
         console.print(
             f"\n[bold red][ANOMALY tick {tick}][/bold red] [red]{description}[/red]"
@@ -143,9 +156,16 @@ class ThoughtLogger:
         price_table.add_row("Total volume",   f"{metrics.total_volume} units ({metrics.total_trades} trades)")
         price_table.add_row("Gini (start)",   f"{metrics.gini_start:.3f}")
         price_table.add_row("Gini (end)",     f"{metrics.gini_end:.3f}")
+        if metrics.total_consumed > 0:
+            price_table.add_row("Consumed",       f"{metrics.total_consumed:.0f} units")
+            starve_str = f"{metrics.total_starvation}"
+            if metrics.total_starvation > 0:
+                starve_str = f"[red]{metrics.total_starvation}[/red]"
+            price_table.add_row("Starvation ticks", starve_str)
         console.print(price_table)
 
         # Per-agent PnL
+        show_survival = metrics.total_consumed > 0
         agent_table = Table(box=box.SIMPLE_HEAVY, border_style="dim", show_header=True,
                             title="Agent PnL")
         agent_table.add_column("Agent",      style="bold white")
@@ -153,14 +173,21 @@ class ThoughtLogger:
         agent_table.add_column("End NW",     justify="right")
         agent_table.add_column("PnL",        justify="right")
         agent_table.add_column("Trades",     justify="right", style="dim")
+        if show_survival:
+            agent_table.add_column("Consumed", justify="right", style="blue")
+            agent_table.add_column("Starved",  justify="right", style="red")
 
         for a in sorted(metrics.agents, key=lambda x: x.pnl, reverse=True):
             pnl_color = "green" if a.pnl >= 0 else "red"
-            agent_table.add_row(
+            row = [
                 a.agent_id,
                 f"${a.net_worth_start:.2f}",
                 f"${a.net_worth_end:.2f}",
                 f"[{pnl_color}]{a.pnl:+.2f} ({a.pnl_pct:+.1%})[/{pnl_color}]",
                 str(a.trade_count),
-            )
+            ]
+            if show_survival:
+                row.append(f"{a.consumed:.0f}")
+                row.append(str(a.starved_ticks) if a.starved_ticks else "-")
+            agent_table.add_row(*row)
         console.print(agent_table)
