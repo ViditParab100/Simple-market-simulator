@@ -21,7 +21,7 @@ def build_roster(seed_price: float = 20.0) -> list:
     """
     return [
         # Producer: the supply side — mints fresh units every tick.
-        ProducerAgent("Producer", inventory=10, cash=200.0, production_rate=10),
+        ProducerAgent("Producer", inventory=12, cash=200.0, production_rate=20),
 
         # Iris: fundamentals-first with a speculative streak
         # Usually calm and rational, but chases momentum when it's strong enough

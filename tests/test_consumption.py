@@ -64,6 +64,46 @@ def test_consume_never_negative_inventory():
     assert a.inventory == 0
 
 
+# ── death / starvation streak ────────────────────────────────────────────────
+
+def test_agent_starts_alive():
+    a = StubAgent("a", inventory=20, cash=100.0)
+    assert a.alive
+
+def test_agent_dies_after_starvation_limit():
+    a = StubAgent("a", inventory=0, cash=100.0)
+    a.consumption_rate = 4
+    a.starvation_limit = 3
+    a.consume(1); assert a.alive       # streak 1
+    a.consume(2); assert a.alive       # streak 2
+    a.consume(3); assert not a.alive   # streak 3 -> dead
+    assert a.died_tick == 3
+
+def test_eating_resets_starvation_streak():
+    a = StubAgent("a", inventory=4, cash=100.0)
+    a.consumption_rate = 4
+    a.starvation_limit = 2
+    # tick 1: only 0 in stock after... actually has 4, eats 4 fully -> no starve
+    a.consume(1)
+    assert a.consecutive_starved == 0
+    # now empty: starve once
+    a.consume(2)
+    assert a.consecutive_starved == 1
+    assert a.alive
+    # refill and eat fully -> streak resets
+    a.inventory = 10
+    a.consume(3)
+    assert a.consecutive_starved == 0
+
+def test_dead_agent_does_not_consume():
+    a = StubAgent("a", inventory=100, cash=100.0)
+    a.consumption_rate = 4
+    a.alive = False
+    got, starved = a.consume(1)
+    assert got == 0.0
+    assert a.inventory == 100
+
+
 # ── runway() ───────────────────────────────────────────────────────────────────
 
 def test_runway_infinite_when_not_consuming():

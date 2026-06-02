@@ -114,10 +114,10 @@ class SimulationEngine:
             if fired:
                 state = self._build_market_state()
 
-        # Phase 1: Bilateral haggling
+        # Phase 1: Bilateral haggling (alive agents only)
         if self.haggle_coordinator:
             haggle_results = self.haggle_coordinator.run(
-                self.agents, state, self.tick
+                [a for a in self.agents if a.alive], state, self.tick
             )
             for trade, log in haggle_results:
                 self.logger.log_haggle_session(log)
@@ -129,8 +129,10 @@ class SimulationEngine:
             if haggle_results:
                 state = self._build_market_state()
 
-        # Phase 2: Regular order-book market
+        # Phase 2: Regular order-book market (alive agents only)
         for agent in self.agents:
+            if not agent.alive:
+                continue
             thoughts = agent.think(state)
             orders   = list(agent.act(state))
             # Survival pressure: starving agents bid above market to restock
@@ -201,23 +203,34 @@ class SimulationEngine:
         )
 
     def _run_production(self):
-        """Producers mint new supply. Logs total produced if anything was made."""
+        """Living producers mint new supply. Logs total produced if anything was made."""
         total_produced = 0.0
         for agent in self.agents:
-            total_produced += agent.produce()
+            if agent.alive:
+                total_produced += agent.produce()
         if total_produced > 0:
             self.logger.log_production(self.tick, total_produced)
 
     def _run_consumption(self):
-        """Every agent burns its survival ration. Logs total consumed + who starved."""
+        """
+        Every living agent burns its survival ration. Agents that starve past
+        their limit are knocked out. Logs total consumed, who starved, who died.
+        """
         total_consumed = 0.0
         starving: list[str] = []
+        died: list[str] = []
         for agent in self.agents:
-            consumed, starved = agent.consume()
+            if not agent.alive:
+                continue
+            consumed, starved = agent.consume(self.tick)
             total_consumed += consumed
             if starved:
                 starving.append(agent.agent_id)
+            if not agent.alive:          # transitioned to dead this tick
+                died.append(agent.agent_id)
         self.logger.log_consumption(self.tick, total_consumed, starving)
+        for agent_id in died:
+            self.logger.log_death(agent_id, self.tick)
 
     def _settle(self, trades: list[Trade], haggle: bool = False):
         for trade in trades:

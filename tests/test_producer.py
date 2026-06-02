@@ -72,6 +72,29 @@ def test_producer_holds_when_empty():
     _, orders = run(p, state(20.0))
     assert orders == []
 
+def test_producer_reserves_own_ration_when_consuming():
+    # With consumption on, the producer keeps a buffer back instead of selling all.
+    p = ProducerAgent("P", inventory=20, cash=100.0)
+    p.consumption_rate = 6          # reserve = 12
+    _, orders = run(p, state(20.0))
+    assert orders[0].quantity == 20 - 12   # sells surplus only
+
+def test_producer_does_not_starve_itself():
+    """A producer that out-produces its consumption should never die."""
+    from market.metrics import MetricsCollector
+    p = ProducerAgent("Producer", inventory=12, cash=200.0, production_rate=20)
+    others = [MarketMakerAgent("MM", inventory=5, cash=800.0),
+              RationalAgent("Ra",   inventory=5, cash=500.0)]
+    eng = SimulationEngine(
+        agents=[p, *others],
+        logger=ThoughtLogger(verbose=False),
+        initial_price_history=[round(19.0 + i*0.25, 2) for i in range(10)],
+        consumption_rate=6.0,
+        metrics_collector=MetricsCollector(),
+    )
+    eng.run(15)
+    assert p.alive   # producer survives on its reserve
+
 def test_producer_never_survival_bids():
     p = ProducerAgent("P", inventory=1, cash=1000.0)
     p.consumption_rate = 5    # even if forced to consume, it won't panic-buy

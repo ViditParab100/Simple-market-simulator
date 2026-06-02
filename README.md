@@ -96,17 +96,18 @@ Two simulations are available:
 - [x] Keyboard shortcuts: `Space` start/pause, `S` step one tick, `R` reset, `+`/`-` faster/slower, `Q` quit (all priority bindings, so they work regardless of widget focus)
 - [x] `--gui` CLI flag launches the TUI; all other flags (`--sim`, `--ticks`, `--haggle`, `--scenario`) carry over
 
-### Phase 7 — Consumption, Survival & Production ✅
+### Phase 7 — Consumption, Survival, Death & Production ✅
 - [x] **Consumption** — every agent burns a survival ration of the commodity each tick (`--consume RATE`). Inventory is no longer static; it depletes unless replenished.
-- [x] **Survival pressure** — when an agent's runway (inventory ÷ consumption) drops below a threshold it bids *above* market to restock, escalating the closer it gets to starvation. This is what keeps an otherwise-frozen market liquid, and it produces scarcity-driven price spikes.
-- [x] **Starvation tracking** — agents that can't cover their ration log a starved tick; surfaced in metrics.
-- [x] **`ProducerAgent`** — the supply side. Mints `production_rate` units each tick and offers its whole stock just below market so it reliably clears. Without it, a consuming economy depletes to zero and everyone starves; with it, supply is continuously replenished.
-- [x] Consumers now start on **bare-minimum inventory** and depend on the Producer for supply
-- [x] Engine gains a production phase (start of tick) and a consumption phase (end of tick); both logged inline (`+ PRODUCED`, `~ CONSUMED`, with `STARVING` callouts)
-- [x] Metrics extended with total consumed, total starvation ticks, and per-agent consumed / starved columns
-- [x] 35 new tests (consumption + producer) — 370 total, all passing
+- [x] **Survival pressure** — when an agent's runway (inventory ÷ consumption) drops below a threshold it bids *above* market to restock, escalating the closer it gets to starvation. This keeps an otherwise-frozen market liquid and produces scarcity-driven price spikes.
+- [x] **Death / knock-out** — an agent that can't cover its ration for `starvation_limit` consecutive ticks (default 3) **dies** and stops trading ("out for the count"). Logged inline as `X DEATH`; survivors vs deaths reported in metrics.
+- [x] **`ProducerAgent`** — the supply side. Mints `production_rate` units each tick and sells its *surplus* (keeping a survival reserve so it never starves itself) just below market so it reliably clears. Without it, a consuming economy depletes to zero and everyone starves.
+- [x] Consumers start on **bare-minimum inventory** and depend on the Producer for supply
+- [x] Engine gains a production phase (start of tick) and a consumption phase (end of tick); logged inline (`+ PRODUCED`, `~ CONSUMED` with `STARVING` callouts, `X DEATH`)
+- [x] Metrics extended with total consumed, starvation ticks, deaths/survivors, and per-agent consumed/starved columns; final-state table shows ALIVE / DEAD status
+- [x] CLI `--consume RATE`; GUI gains a **Consume** dropdown (Off / Low / Med / High) defaulting to **High** so survival dynamics are visible immediately
+- [x] 41 new tests (consumption + death + producer) — 376 total, all passing
 
-> **Emergent result:** A single monopoly Producer in a survival economy extracts consumer surplus fast — price runs up, the Producer accumulates the cash, consumers are gradually impoverished, and the market eventually freezes again through *cash exhaustion* (a different failure mode from the price standstill). Tune `--consume`, `production_rate`, and starting cash to find a balance — or recirculate the Producer's cash (a natural next step) for a true steady state.
+> **Emergent result:** Under heavy consumption with a single under-producing supplier, the market becomes a survival contest. Agents that lose the bidding war for food starve and die off one by one, while the monopoly Producer absorbs nearly all the cash (Gini → ~0.8) and ends as the lone survivor. Tune `--consume` and `production_rate` to shift between sustainable equilibrium and total die-off — and **salaries / cash recirculation** are the natural next step to keep consumers solvent.
 
 ---
 
@@ -365,7 +366,7 @@ python main.py --gui --sim hybrid --ticks 20 --haggle
 python main.py --gui --sim zoo --ticks 25 --scenario panic_cascade
 python main.py --gui --sim hybrid --ticks 30 --scenario speculator_bubble --haggle
 
-# Run all 370 tests
+# Run all 376 tests
 python -m pytest tests/ -v
 ```
 
@@ -388,7 +389,7 @@ python -m pytest tests/ -v
 | `--audit` | file path | Write JSONL audit trail to disk (requires `--events`) |
 | `--metrics` | flag | Show run metrics summary + per-agent PnL at end |
 | `--scenario` | `hoarding_crash` `panic_cascade` `speculator_bubble` | Inject a named stress-test scenario |
-| `--consume` | float (e.g. `3`) | Per-tick survival consumption rate for every agent; drives survival bidding |
+| `--consume` | float (e.g. `4`) | Per-tick survival consumption rate for every agent; drives survival bidding and starvation/death. CLI default off; GUI defaults to High |
 | `--gui` | flag | Launch the interactive Textual TUI instead of CLI output |
 
 ### GUI keyboard shortcuts
@@ -414,4 +415,4 @@ Speed can also be changed live from the dropdown in the control panel. The five 
 | Event pipeline | In-process `EventBus` (Kafka-shaped schema; swap-in ready) |
 | CLI output | `rich` (terminal panels, tables, colour) |
 | Interactive GUI | `textual` (Textual TUI — 4-panel live layout, worker thread) |
-| Testing | `pytest` — 370 tests across 16 files |
+| Testing | `pytest` — 376 tests across 16 files |

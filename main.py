@@ -38,7 +38,7 @@ def build_zoo_agents() -> list:
     # Consumers start on bare-minimum inventory — they depend on the Producer
     # for supply. The Producer mints fresh units every tick.
     return [
-        ProducerAgent("Producer-01",       inventory=10, cash=200.0, production_rate=10),
+        ProducerAgent("Producer-01",       inventory=12, cash=200.0, production_rate=20),
         MarketMakerAgent("MarketMaker-01", inventory=5,  cash=800.0),
         SpeculatorAgent("Speculator-01",   inventory=4,  cash=600.0),
         HoarderAgent("Hoarder-01",         inventory=4,  cash=1000.0, hoard_target=60),
@@ -69,8 +69,9 @@ def main():
                         help="Show run metrics summary at end")
     parser.add_argument("--scenario", choices=list(NAMED_SCENARIOS.keys()), default=None,
                         help="Inject a named stress-test scenario")
-    parser.add_argument("--consume", type=float, default=0.0, metavar="RATE",
-                        help="Per-tick survival consumption rate for every agent (e.g. 2.0)")
+    parser.add_argument("--consume", type=float, default=-1.0, metavar="RATE",
+                        help="Per-tick survival consumption rate for every agent (e.g. 4.0). "
+                             "Omit for CLI default (off); GUI defaults to High.")
     parser.add_argument("--gui",     action="store_true",
                         help="Launch the interactive Textual GUI")
     args = parser.parse_args()
@@ -83,9 +84,13 @@ def main():
             ticks=args.ticks,
             speed="normal",
             haggle=args.haggle,
-            consumption=args.consume,
+            # explicit --consume overrides; otherwise GUI uses its High default
+            consumption=args.consume if args.consume >= 0 else 6.0,
         )
         return
+
+    # CLI path: consumption off unless explicitly requested
+    consume_rate = args.consume if args.consume >= 0 else 0.0
 
     if args.sim == "hybrid":
         agents       = build_roster()
@@ -122,7 +127,7 @@ def main():
         event_bus=bus,
         scenario_runner=scenario,
         metrics_collector=collector,
-        consumption_rate=args.consume,
+        consumption_rate=consume_rate,
     )
     engine.run(ticks=args.ticks)
 

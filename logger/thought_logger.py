@@ -63,6 +63,13 @@ class ThoughtLogger:
             return
         console.print(f"\n  [bold green]+ PRODUCED[/bold green] {total_produced:.0f} units into the market")
 
+    def log_death(self, agent_id: str, tick: int):
+        # Always shown (even in quiet mode) — a death is a major event
+        console.print(
+            f"\n  [bold red]X DEATH[/bold red]  [red]{agent_id} starved and is out for the count "
+            f"(tick {tick})[/red]"
+        )
+
     def log_consumption(self, tick: int, total_consumed: float, starving: list[str]):
         if not self.verbose:
             return
@@ -111,22 +118,32 @@ class ThoughtLogger:
         console.print()
         console.print(Rule("[bold cyan]Final State[/bold cyan]", style="cyan"))
 
+        any_dead = any(not getattr(a, "alive", True) for a in agents)
+
         table = Table(box=box.SIMPLE_HEAVY, border_style="dim", show_header=True)
         table.add_column("Agent", style="bold white")
         table.add_column("Inventory", justify="right", style="cyan")
         table.add_column("Cash", justify="right", style="green")
         table.add_column("Net Worth", justify="right", style="yellow")
         table.add_column("Trades", justify="right", style="dim")
+        if any_dead:
+            table.add_column("Status", justify="center")
 
         price = last_price or 0.0
         for agent in agents:
-            table.add_row(
+            alive = getattr(agent, "alive", True)
+            row = [
                 agent.agent_id,
-                str(agent.inventory),
+                f"{agent.inventory:g}",
                 f"${agent.cash:.2f}",
                 f"${agent.net_worth(price):.2f}",
                 str(agent.trade_count),
-            )
+            ]
+            if any_dead:
+                died = getattr(agent, "died_tick", None)
+                row.append("[green]ALIVE[/green]" if alive
+                           else f"[bold red]DEAD t{died}[/bold red]")
+            table.add_row(*row)
 
         console.print(table)
 
@@ -162,6 +179,10 @@ class ThoughtLogger:
             if metrics.total_starvation > 0:
                 starve_str = f"[red]{metrics.total_starvation}[/red]"
             price_table.add_row("Starvation ticks", starve_str)
+            deaths_str = f"{metrics.deaths}"
+            if metrics.deaths > 0:
+                deaths_str = f"[bold red]{metrics.deaths}[/bold red]"
+            price_table.add_row("Deaths / survivors", f"{deaths_str} / {metrics.survivors}")
         console.print(price_table)
 
         # Per-agent PnL

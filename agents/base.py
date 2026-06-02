@@ -20,6 +20,12 @@ class Agent(ABC):
         self.consumed_total: float = 0.0       # lifetime units consumed
         self.starved_ticks: int = 0            # ticks where ration couldn't be met
 
+        # ── Survival / death ───────────────────────────────────────────────
+        self.alive: bool = True                # False once knocked out
+        self.starvation_limit: int = 3         # consecutive starved ticks -> death
+        self.consecutive_starved: int = 0      # current starvation streak
+        self.died_tick: int | None = None      # tick the agent went out
+
         # ── Production (only ProducerAgent overrides this) ─────────────────
         self.produced_total: float = 0.0       # lifetime units minted into the market
 
@@ -52,13 +58,16 @@ class Agent(ABC):
 
     # ── Consumption / survival ─────────────────────────────────────────────
 
-    def consume(self) -> tuple[float, bool]:
+    def consume(self, tick: int | None = None) -> tuple[float, bool]:
         """
         Burn this tick's survival ration from inventory.
         Returns (units_consumed, starved) where starved is True if the agent
         could not cover its full ration. Called by the engine each tick.
+
+        A starvation streak of `starvation_limit` consecutive ticks knocks the
+        agent out (alive = False) — it can no longer trade.
         """
-        if self.consumption_rate <= 0:
+        if self.consumption_rate <= 0 or not self.alive:
             return 0.0, False
         want = self.consumption_rate
         got  = min(want, self.inventory)
@@ -67,6 +76,12 @@ class Agent(ABC):
         starved = got < want
         if starved:
             self.starved_ticks += 1
+            self.consecutive_starved += 1
+            if self.consecutive_starved >= self.starvation_limit:
+                self.alive = False
+                self.died_tick = tick
+        else:
+            self.consecutive_starved = 0
         return got, starved
 
     def runway(self) -> float:

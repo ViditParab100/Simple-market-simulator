@@ -85,6 +85,8 @@ class AgentSummary:
     trade_count:     int
     consumed:        float = 0.0   # lifetime units consumed for survival
     starved_ticks:   int   = 0     # ticks the agent couldn't meet its ration
+    alive:           bool  = True  # False if knocked out by starvation
+    died_tick:       int | None = None
 
     @property
     def pnl(self) -> float:
@@ -120,6 +122,8 @@ class RunMetrics:
     # Consumption / survival
     total_consumed:    float = 0.0
     total_starvation:  int   = 0
+    deaths:            int   = 0
+    survivors:         int   = 0
 
     # Per-agent
     agents: list[AgentSummary] = field(default_factory=list)
@@ -185,6 +189,8 @@ class MetricsCollector:
                 trade_count=a.trade_count,
                 consumed=getattr(a, "consumed_total", 0.0),
                 starved_ticks=getattr(a, "starved_ticks", 0),
+                alive=getattr(a, "alive", True),
+                died_tick=getattr(a, "died_tick", None),
             )
             for a in agents
         ]
@@ -204,5 +210,7 @@ class MetricsCollector:
             gini_end         = gini(worths_end),
             total_consumed   = sum(s.consumed for s in agent_sums),
             total_starvation = sum(s.starved_ticks for s in agent_sums),
+            deaths           = sum(1 for s in agent_sums if not s.alive),
+            survivors        = sum(1 for s in agent_sums if s.alive),
             agents           = agent_sums,
         )
