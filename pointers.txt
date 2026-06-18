@@ -1,7 +1,0 @@
-Built a Python agent-based market simulator with 5 trader archetypes on a central limit order book, modeling price discovery, liquidity, and systemic risk across 10 modular subsystems backed by 424 unit tests.
-
-Designed autonomous agents with bilateral haggling and mood-driven behavior switching (2–3 blended personas per agent); reproduced market collapses with wealth concentration up to a 0.8 Gini coefficient under stress scenarios.
-
-Implemented cost-plus price anchoring and wage-based cash recirculation that cut peak inflation ~93% (+121% to +8%) and halved starvation-driven agent deaths (4 to 2), reaching a sustainable equilibrium.
-
-Integrated 3 pluggable LLM backends (Ollama / OpenAI / Anthropic) for natural-language agent reasoning with rule-based fallback, plus a real-time terminal dashboard.
