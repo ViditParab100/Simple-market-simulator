@@ -43,20 +43,20 @@ def build_roster(seed_price: float = 20.0) -> list:
             inventory=5,
             cash=900.0,
             profile=PersonalityProfile({
-                ArchetypeTag.HOARDER:      0.60,
-                ArchetypeTag.MARKET_MAKER: 0.40,
+                ArchetypeTag.HOARDER:      0.55,  # was 0.60 — gave too much edge over MM
+                ArchetypeTag.MARKET_MAKER: 0.45,  # was 0.40
             }),
         ),
 
-        # Dex: thrill-seeker — mostly speculates, panics badly under pressure
+        # Dex: thrill-seeker — panics badly under pressure, speculates in uptrends
         # Amplifies trends in both directions; most likely to trigger a cascade
         HybridNPC(
             agent_id="Dex",
             inventory=4,
             cash=400.0,
             profile=PersonalityProfile({
-                ArchetypeTag.SPECULATOR:   0.45,
-                ArchetypeTag.PANIC:        0.35,
+                ArchetypeTag.PANIC:        0.50,  # was 0.35 — must dominate in crashes
+                ArchetypeTag.SPECULATOR:   0.30,  # was 0.45 — still wins in uptrends
                 ArchetypeTag.RATIONAL:     0.20,
             }),
         ),
@@ -81,8 +81,8 @@ def build_roster(seed_price: float = 20.0) -> list:
             inventory=5,
             cash=500.0,
             profile=PersonalityProfile({
-                ArchetypeTag.HOARDER:      0.50,
-                ArchetypeTag.PANIC:        0.30,
+                ArchetypeTag.HOARDER:      0.40,  # was 0.50 — pure hoarding suppressed contagion panic
+                ArchetypeTag.PANIC:        0.40,  # was 0.30 — now reacts to contagion + downtrends
                 ArchetypeTag.SPECULATOR:   0.20,
             }),
         ),

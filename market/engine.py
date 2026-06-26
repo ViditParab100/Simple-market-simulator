@@ -2,6 +2,7 @@ from __future__ import annotations
 from .order_book import OrderBook
 from .models import MarketState, Trade
 from .haggle import HaggleCoordinator
+from .auction import AuctionCoordinator, AuctionResult
 from .events import EventBus, trade_event, tick_summary_event
 from .metrics import MetricsCollector
 from .scenarios import ScenarioRunner
@@ -17,23 +18,25 @@ class SimulationEngine:
         self,
         agents:                list[Agent],
         logger:                ThoughtLogger,
-        initial_price_history: list[float]      | None = None,
+        initial_price_history: list[float]       | None = None,
         haggle_coordinator:    HaggleCoordinator | None = None,
+        auction_coordinator:   AuctionCoordinator| None = None,
         event_bus:             EventBus          | None = None,
         scenario_runner:       ScenarioRunner    | None = None,
         metrics_collector:     MetricsCollector  | None = None,
         consumption_rate:      float                    = 0.0,
         salary:                float                    = 0.0,
     ):
-        self.agents             = agents
-        self.order_book         = OrderBook()
-        self.logger             = logger
-        self.haggle_coordinator = haggle_coordinator
-        self.event_bus          = event_bus
-        self.scenario_runner    = scenario_runner
-        self.metrics_collector  = metrics_collector
-        self.consumption_rate   = consumption_rate
-        self.salary             = salary
+        self.agents               = agents
+        self.order_book           = OrderBook()
+        self.logger               = logger
+        self.haggle_coordinator   = haggle_coordinator
+        self.auction_coordinator  = auction_coordinator
+        self.event_bus            = event_bus
+        self.scenario_runner      = scenario_runner
+        self.metrics_collector    = metrics_collector
+        self.consumption_rate     = consumption_rate
+        self.salary               = salary
         self.tick               = 0
         self._total_ticks       = 0
         self.price_history: list[float] = list(initial_price_history or [])
@@ -110,7 +113,20 @@ class SimulationEngine:
 
         state = self._build_market_state()
 
-        # Phase 0: Scenario interventions
+        # Phase 0a: English auction — clear Producer surplus via competitive bidding
+        if self.auction_coordinator:
+            auction_result = self.auction_coordinator.maybe_run(
+                self.agents, state, self.tick
+            )
+            if auction_result is not None:
+                self.logger.log_auction(self.tick, auction_result)
+                if auction_result.sold:
+                    tick_trades.append(_auction_to_trade(auction_result))
+                    self.price_history.append(auction_result.winning_price)
+                    self.order_book.last_price = auction_result.winning_price
+                    state = self._build_market_state()
+
+        # Phase 0b: Scenario interventions
         if self.scenario_runner:
             fired = self.scenario_runner.apply(
                 self.tick, self.agents, self.order_book, self.price_history
@@ -315,3 +331,14 @@ class SimulationEngine:
         for agent in self.agents:
             if isinstance(agent, HybridNPC):
                 agent.mood.contagion_pulse = 0.0
+
+
+def _auction_to_trade(result: AuctionResult) -> Trade:
+    """Convert a won AuctionResult into a Trade for metrics tracking."""
+    return Trade(
+        buyer_id=result.winner_id,
+        seller_id=result.lot.seller_id,
+        price=result.winning_price,
+        quantity=result.lot.quantity,
+        tick=result.lot.tick,
+    )

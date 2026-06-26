@@ -32,7 +32,7 @@ class RandomAgent(Agent):
 
         if self._next_action == "sell" and self.inventory > 0:
             ask_price = round(price * self.rng.uniform(0.95, 1.05), 2)
-            qty = self.rng.randint(1, min(5, self.inventory))
+            qty = self.rng.randint(1, min(5, int(self.inventory)))
             return [Order(self.agent_id, OrderSide.ASK, ask_price, qty, state.tick)]
 
         return []

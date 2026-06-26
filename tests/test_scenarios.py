@@ -3,7 +3,7 @@ import pytest
 from market.scenarios import (
     ScenarioEvent, ScenarioRunner,
     hoarding_crash_scenario, panic_cascade_scenario,
-    speculator_bubble_scenario, NAMED_SCENARIOS,
+    speculator_bubble_scenario, supply_disruption_scenario, NAMED_SCENARIOS,
 )
 from market.order_book import OrderBook
 from agents.base import Agent
@@ -247,9 +247,10 @@ class TestPredefinedScenarios:
         assert 9 in runner.scheduled_ticks
 
     def test_named_scenarios_registry_complete(self):
-        assert "hoarding_crash"    in NAMED_SCENARIOS
-        assert "panic_cascade"     in NAMED_SCENARIOS
-        assert "speculator_bubble" in NAMED_SCENARIOS
+        assert "hoarding_crash"     in NAMED_SCENARIOS
+        assert "panic_cascade"      in NAMED_SCENARIOS
+        assert "speculator_bubble"  in NAMED_SCENARIOS
+        assert "supply_disruption"  in NAMED_SCENARIOS
 
     def test_hoarding_crash_reduces_inventory_at_tick_5(self):
         runner = hoarding_crash_scenario()
@@ -275,3 +276,96 @@ class TestPredefinedScenarios:
         # Price history should show an upward trend
         if len(hist) >= 2:
             assert hist[-1] > hist[0]
+
+    def test_supply_disruption_returns_runner(self):
+        assert isinstance(supply_disruption_scenario(), ScenarioRunner)
+
+    def test_supply_disruption_fires_at_ticks_5_and_20(self):
+        runner = supply_disruption_scenario()
+        assert 5  in runner.scheduled_ticks
+        assert 20 in runner.scheduled_ticks
+
+
+# ── production_cut / production_restore ───────────────────────────────────────
+
+class TestProductionCut:
+
+    def _producer_stub(self, rate: int = 20):
+        """StubAgent with a production_rate attribute."""
+        agent = make_agent("P", inventory=50)
+        agent.production_rate = rate
+        return agent
+
+    def test_cuts_production_rate_by_fraction(self):
+        p      = self._producer_stub(20)
+        runner = ScenarioRunner([
+            ScenarioEvent(tick=1, action="production_cut", params={"fraction": 0.75})
+        ])
+        runner.apply(1, [p], fresh_book(), [20.0])
+        assert p.production_rate == 5   # 20 * 0.25 = 5
+
+    def test_production_rate_never_below_one(self):
+        p      = self._producer_stub(1)
+        runner = ScenarioRunner([
+            ScenarioEvent(tick=1, action="production_cut", params={"fraction": 0.99})
+        ])
+        runner.apply(1, [p], fresh_book(), [20.0])
+        assert p.production_rate >= 1
+
+    def test_only_affects_agents_with_production_rate(self):
+        producer = self._producer_stub(20)
+        worker   = make_agent("W", inventory=30)   # no production_rate
+        runner   = ScenarioRunner([
+            ScenarioEvent(tick=1, action="production_cut", params={"fraction": 0.5})
+        ])
+        runner.apply(1, [producer, worker], fresh_book(), [20.0])
+        assert producer.production_rate == 10
+        assert not hasattr(worker, "production_rate")
+
+    def test_targets_specific_agent(self):
+        p1 = self._producer_stub(20); p1.agent_id = "P1"
+        p2 = self._producer_stub(20); p2.agent_id = "P2"
+        runner = ScenarioRunner([
+            ScenarioEvent(tick=1, action="production_cut",
+                          params={"fraction": 0.5, "agent_ids": ["P1"]})
+        ])
+        runner.apply(1, [p1, p2], fresh_book(), [20.0])
+        assert p1.production_rate == 10
+        assert p2.production_rate == 20  # untouched
+
+    def test_describe_mentions_percentage(self):
+        e = ScenarioEvent(tick=5, action="production_cut", params={"fraction": 0.75})
+        assert "75%" in e.describe()
+        assert "production_cut" in e.describe()
+
+
+class TestProductionRestore:
+
+    def _producer_stub(self, rate: int = 5):
+        agent = make_agent("P", inventory=50)
+        agent.production_rate = rate
+        return agent
+
+    def test_restores_production_rate(self):
+        p      = self._producer_stub(5)
+        runner = ScenarioRunner([
+            ScenarioEvent(tick=1, action="production_restore", params={"rate": 20})
+        ])
+        runner.apply(1, [p], fresh_book(), [20.0])
+        assert p.production_rate == 20
+
+    def test_describe_mentions_rate(self):
+        e = ScenarioEvent(tick=20, action="production_restore", params={"rate": 20})
+        assert "20" in e.describe()
+        assert "production_restore" in e.describe()
+
+    def test_cut_then_restore_cycle(self):
+        p = self._producer_stub(20)
+        runner = ScenarioRunner([
+            ScenarioEvent(tick=5,  action="production_cut",     params={"fraction": 0.75}),
+            ScenarioEvent(tick=20, action="production_restore",  params={"rate": 20}),
+        ])
+        runner.apply(5,  [p], fresh_book(), [20.0])
+        assert p.production_rate == 5
+        runner.apply(20, [p], fresh_book(), [20.0])
+        assert p.production_rate == 20

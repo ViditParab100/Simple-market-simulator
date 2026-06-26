@@ -71,6 +71,18 @@ class HoarderAgent(Agent):
             return f"Mine now — {qty} more units secured at ${price:.2f}. Never enough."
         return f"Parting with {qty}? Only because ${price:.2f} was too good to refuse."
 
+    def auction_bid(self, lot, current_price, round_num, state):
+        base = super().auction_bid(lot, current_price, round_num, state)
+        if base is not None:
+            return base
+        if self.cash < current_price * lot.quantity:
+            return None
+        shortfall = self.hoard_target - self.inventory
+        if shortfall <= 0:
+            return None  # hoard complete — not buying at any auction price
+        # Hoarder insists on its buy_discount — drops out the moment price exceeds it
+        return round(lot.market_price * self.buy_discount, 2)
+
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         shortfall = self.hoard_target - self.inventory
         if shortfall <= 0:

@@ -12,6 +12,7 @@ from agents.producer import ProducerAgent
 from agents.llm_agent import build_llm_roster
 from agents.hybrid.roster import build_roster
 from market.haggle import HaggleCoordinator
+from market.auction import AuctionCoordinator
 from market.events import EventBus, EventType
 from market.consumers import AuditConsumer, AnomalyDetector
 from market.metrics import MetricsCollector
@@ -24,15 +25,17 @@ _SEED_HISTORY = [round(19.0 + i * 0.25, 2) for i in range(10)]
 
 def build_random_agents(n: int, seed: int) -> list:
     rng = random.Random(seed)
-    return [
+    agents = [ProducerAgent("Producer-01", inventory=12, cash=200.0, production_rate=20)]
+    agents += [
         RandomAgent(
             agent_id=f"Random-{i + 1:02d}",
-            inventory=rng.randint(10, 50),
+            inventory=rng.randint(3, 8),
             cash=round(rng.uniform(200, 600), 2),
             seed=seed + i,
         )
         for i in range(n)
     ]
+    return agents
 
 
 def build_zoo_agents() -> list:
@@ -60,8 +63,11 @@ def main():
                         help="Random seed for random mode (default: 42)")
     parser.add_argument("--quiet",  action="store_true",
                         help="Hide per-agent thought logs")
-    parser.add_argument("--haggle", action="store_true",
+    parser.add_argument("--haggle",  action="store_true",
                         help="Enable pre-tick bilateral haggling phase")
+    parser.add_argument("--auction", action="store_true",
+                        help="Enable English auction phase: Producer offloads surplus "
+                             "via ascending-price bidding (triggers when surplus >= 35 units)")
     parser.add_argument("--events", action="store_true",
                         help="Enable event pipeline with anomaly detection")
     parser.add_argument("--audit",    type=str, default=None, metavar="PATH",
@@ -71,15 +77,19 @@ def main():
     parser.add_argument("--scenario", choices=list(NAMED_SCENARIOS.keys()), default=None,
                         help="Inject a named stress-test scenario")
     parser.add_argument("--consume", type=float, default=-1.0, metavar="RATE",
-                        help="Per-tick survival consumption rate for every agent (e.g. 4.0). "
-                             "Omit for CLI default (off); GUI defaults to High.")
+                        help="Per-tick survival ration for every agent. Default: 3.0 (all modes). "
+                             "Pass 0 to disable survival (market freezes — no buying pressure).")
     parser.add_argument("--salary",  type=float, default=-1.0, metavar="WAGE",
-                        help="Wage the Producer pays each worker per tick (e.g. 10.0). "
-                             "Recirculates cash. Omit for CLI default (off); GUI defaults to On.")
+                        help="Wage the Producer pays each worker per tick. Default: 70.0 (all modes). "
+                             "Pass 0 to disable wages (agents go broke and starve).")
     parser.add_argument("--llm",     type=str, default=None, metavar="SPEC",
                         help="Back agents with a language model. e.g. 'mock', "
-                             "'ollama:llama3.2', 'openai:gpt-4o-mini'. Comma-separate "
-                             "multiple specs to run models head-to-head.")
+                             "'ollama:llama3.2', 'openai:gpt-4o-mini', "
+                             "'groq:llama-3.1-8b-instant', 'groq:gemma2-9b-it'. "
+                             "Comma-separate multiple specs to run models head-to-head.")
+    parser.add_argument("--speed",   type=str, default="very_slow",
+                        choices=["very_slow", "slow", "normal", "fast", "instant"],
+                        help="Initial GUI speed (default: very_slow)")
     parser.add_argument("--gui",     action="store_true",
                         help="Launch the interactive Textual GUI")
     args = parser.parse_args()
@@ -90,7 +100,7 @@ def main():
             sim_mode=args.sim,
             scenario=args.scenario or "none",
             ticks=args.ticks,
-            speed="normal",
+            speed=args.speed,
             haggle=args.haggle,
             # explicit flags override; otherwise GUI uses its visible defaults
             consumption=args.consume if args.consume >= 0 else 4.0,
@@ -99,9 +109,9 @@ def main():
         )
         return
 
-    # CLI path: consumption / salary off unless explicitly requested
-    consume_rate = args.consume if args.consume >= 0 else 0.0
-    salary_rate  = args.salary  if args.salary  >= 0 else 0.0
+    # survival is always on — food is a necessity in every mode
+    consume_rate = args.consume if args.consume >= 0 else 3.0
+    salary_rate  = args.salary  if args.salary  >= 0 else 70.0
 
     if args.llm:
         agents       = build_llm_roster(args.llm)
@@ -114,10 +124,11 @@ def main():
         seed_history = _SEED_HISTORY
     else:
         agents       = build_random_agents(args.agents, args.seed)
-        seed_history = None
+        seed_history = _SEED_HISTORY
 
-    logger      = ThoughtLogger(verbose=not args.quiet)
-    coordinator = HaggleCoordinator(max_rounds=3) if args.haggle else None
+    logger           = ThoughtLogger(verbose=not args.quiet)
+    coordinator      = HaggleCoordinator(max_rounds=3) if args.haggle else None
+    auction_coord    = AuctionCoordinator() if args.auction else None
 
     # Event pipeline
     bus      = None
@@ -138,6 +149,7 @@ def main():
         agents=agents, logger=logger,
         initial_price_history=seed_history,
         haggle_coordinator=coordinator,
+        auction_coordinator=auction_coord,
         event_bus=bus,
         scenario_runner=scenario,
         metrics_collector=collector,

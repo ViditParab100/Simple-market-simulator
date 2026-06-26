@@ -46,16 +46,16 @@ class SpeculatorAgent(Agent):
             room = self.max_position - self.inventory
             if room <= 0:
                 thoughts.append(f"UPTREND (+{momentum:.1%}) but at max position ({self.inventory}/{self.max_position}). Holding.")
-            elif self.cash <= 0:
-                thoughts.append("UPTREND detected but out of cash. Holding.")
             else:
                 qty = max(1, min(room, int(room * momentum * 10)))
                 bid_price = round(price * (1 + self.aggressiveness), 2)
                 thoughts.append(f"UPTREND detected ({momentum:+.1%}) -- riding the wave LONG.")
                 thoughts.append(f"Position: {self.inventory}/{self.max_position}  |  Buying {qty} units.")
-                thoughts.append(f"Decision: BID {qty} @ ${bid_price:.2f} (paying {self.aggressiveness:.0%} premium to get filled fast)")
                 if self.cash >= bid_price * qty:
+                    thoughts.append(f"Decision: BID {qty} @ ${bid_price:.2f} (paying {self.aggressiveness:.0%} premium to get filled fast)")
                     orders.append(Order(self.agent_id, OrderSide.BID, bid_price, qty, state.tick))
+                else:
+                    thoughts.append(f"Insufficient cash (${self.cash:.0f} < ${bid_price * qty:.0f} needed). Holding.")
 
         elif momentum < -self.momentum_threshold:
             if self.inventory <= 0:
@@ -81,6 +81,18 @@ class SpeculatorAgent(Agent):
         if role == "buyer":
             return f"Riding the momentum — long {qty} @ ${price:.2f}. To the moon!"
         return f"Taking profits on {qty} @ ${price:.2f}. Trend's turning."
+
+    def auction_bid(self, lot, current_price, round_num, state):
+        base = super().auction_bid(lot, current_price, round_num, state)
+        if base is not None:
+            return base
+        if self.cash < current_price * lot.quantity:
+            return None
+        momentum = state.price_momentum
+        if momentum > self.momentum_threshold and self.inventory < self.max_position:
+            # Bullish: pay up to aggressiveness × 3 premium above market
+            return round(lot.market_price * (1 + self.aggressiveness * 3), 2)
+        return None  # flat or bearish — don't accumulate
 
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         if len(state.price_history) < 2:
