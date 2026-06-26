@@ -59,12 +59,16 @@ class MarketMakerAgent(Agent):
 
         else:
             thoughts.append(f"Inventory balanced ({self.inventory} units) -- quoting both sides.")
-            thoughts.append(f"Decision: BID {self.quote_size} @ ${bid_price:.2f}  |  ASK {self.quote_size} @ ${ask_price:.2f}")
-            if self.cash >= bid_price * self.quote_size:
-                orders.append(Order(self.agent_id, OrderSide.BID, bid_price, self.quote_size, state.tick))
+            can_bid = self.cash >= bid_price * self.quote_size
             ask_qty = min(self.quote_size, self.inventory)
+            if can_bid:
+                orders.append(Order(self.agent_id, OrderSide.BID, bid_price, self.quote_size, state.tick))
+            else:
+                thoughts.append(f"No cash for BID side (${self.cash:.0f} < ${bid_price * self.quote_size:.0f}). Ask-only this tick.")
             if ask_qty > 0:
                 orders.append(Order(self.agent_id, OrderSide.ASK, ask_price, ask_qty, state.tick))
+            sides = ("BID " if can_bid else "") + ("ASK" if ask_qty > 0 else "")
+            thoughts.append(f"Decision: {sides or 'HOLD (no cash, no inventory)'}")
 
         self._pending_orders = orders
         return thoughts
@@ -76,6 +80,19 @@ class MarketMakerAgent(Agent):
         if role == "buyer":
             return f"Filled {qty} on the bid @ ${price:.2f} — working the spread."
         return f"Lifted {qty} on the offer @ ${price:.2f} — capturing the spread."
+
+    def auction_bid(self, lot, current_price, round_num, state):
+        base = super().auction_bid(lot, current_price, round_num, state)
+        if base is not None:
+            return base  # survival bid
+        if self.cash < current_price * lot.quantity:
+            return None
+        if self.inventory <= self.min_inventory:
+            return round(lot.market_price * 1.05, 2)  # need stock badly
+        mid = (self.min_inventory + self.max_inventory) // 2
+        if self.inventory < mid:
+            return round(lot.market_price * 1.01, 2)  # opportunistic top-up
+        return None  # well-stocked — pass
 
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         price = state.last_price or _DEFAULT_PRICE

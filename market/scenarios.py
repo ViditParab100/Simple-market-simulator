@@ -44,6 +44,12 @@ class ScenarioEvent:
             return f"agent_collapse: {p.get('agent_id', '?')} goes bankrupt"
         if self.action == "price_inject":
             return f"price_inject: force last price to ${p.get('price', 0):.2f}"
+        if self.action == "production_cut":
+            return (f"production_cut: harvest fails -- output drops by "
+                    f"{p.get('fraction', 0.75)*100:.0f}%")
+        if self.action == "production_restore":
+            return (f"production_restore: recovery -- output restored to "
+                    f"{p.get('rate', 20)} units/tick")
         return f"{self.action}: {p}"
 
 
@@ -108,6 +114,22 @@ class ScenarioRunner:
             price = float(p.get("price", order_book.last_price or 20.0))
             price_history.append(price)
             order_book.last_price = price
+
+        elif event.action == "production_cut":
+            fraction   = float(p.get("fraction", 0.75))
+            target_ids = p.get("agent_ids")
+            for agent in agents:
+                if target_ids is None or agent.agent_id in target_ids:
+                    if hasattr(agent, "production_rate"):
+                        agent.production_rate = max(1, int(agent.production_rate * (1.0 - fraction)))
+
+        elif event.action == "production_restore":
+            rate       = int(p.get("rate", 20))
+            target_ids = p.get("agent_ids")
+            for agent in agents:
+                if target_ids is None or agent.agent_id in target_ids:
+                    if hasattr(agent, "production_rate"):
+                        agent.production_rate = rate
 
     @property
     def scheduled_ticks(self) -> list[int]:
@@ -180,8 +202,30 @@ def speculator_bubble_scenario() -> ScenarioRunner:
     return ScenarioRunner(events)
 
 
+def supply_disruption_scenario() -> ScenarioRunner:
+    """
+    Scenario 4 — Supply Disruption (Bad Harvest) → Scarcity → Recovery.
+
+    Tick 5:  Production cut by 75% (20 -> 5 units/tick).
+             Market needs ~15 units/tick to feed all agents (5 x consume=3).
+             Supply deficit of ~10 units/tick forces agents to eat reserves.
+    Ticks 6-19: Agents compete fiercely for scarce food. Survival bids push
+             prices up. Hoarders' stockpiles become valuable. Agents with low
+             reserves start starving. Cash drains as agents pay premium prices.
+    Tick 20: Production restored to 20 units/tick.
+             Market floods with supply; prices fall back. Survivors restock.
+    """
+    return ScenarioRunner([
+        ScenarioEvent(tick=5,  action="production_cut",
+                      params={"fraction": 0.75}),         # 20 -> 5 units/tick
+        ScenarioEvent(tick=20, action="production_restore",
+                      params={"rate": 20}),                # back to normal
+    ])
+
+
 NAMED_SCENARIOS: dict[str, ScenarioRunner] = {
     "hoarding_crash":      hoarding_crash_scenario(),
     "panic_cascade":       panic_cascade_scenario(),
     "speculator_bubble":   speculator_bubble_scenario(),
+    "supply_disruption":   supply_disruption_scenario(),
 }

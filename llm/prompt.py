@@ -48,15 +48,9 @@ def build_context(state: "MarketState", agent) -> dict:
 
 
 _SYSTEM_TEMPLATE = (
-    "You are {name}, an autonomous trader in a single-commodity market. "
-    "Your trading style: {style}\n"
-    "Each tick you may place ONE order. You must eat {consume} unit(s) per tick to "
-    "survive; if you run out you starve. Buying spends cash; selling earns cash.\n"
-    "Reply with ONLY a compact JSON object and nothing else:\n"
-    '{{"action": "BID" | "ASK" | "HOLD", "price": <number>, '
-    '"quantity": <integer>, "reasoning": "<one short sentence>"}}\n'
-    "BID = buy order, ASK = sell order, HOLD = do nothing. "
-    "Price must be positive; quantity must be a positive integer (ignored for HOLD)."
+    "Trader {name}. Style: {style}\n"
+    "One order per tick. Eat {consume} unit(s)/tick or starve.\n"
+    'Reply ONLY with JSON: {{"action":"BID"|"ASK"|"HOLD","price":<n>,"quantity":<int>,"reasoning":"<10 words max>"}}'
 )
 
 
@@ -64,15 +58,18 @@ def build_decision_prompt(name: str, style: str, ctx: dict) -> tuple[str, str]:
     system = _SYSTEM_TEMPLATE.format(
         name=name, style=style, consume=ctx.get("consumption_per_tick", 0)
     )
+    inv  = ctx["my_inventory"]
+    cash = ctx["my_cash"]
+    p    = ctx["price"]
+    fv   = ctx["fair_value"]
+    mom  = ctx["momentum_pct"]
+    bid  = ctx["best_bid"]
+    ask  = ctx["best_ask"]
+    food = ctx["ticks_of_food_left"]
     human = (
-        f"Tick {ctx['tick']}. Market price ${ctx['price']:.2f} "
-        f"(fair value ~${ctx['fair_value']:.2f}, momentum {ctx['momentum_pct']:+.1f}%, "
-        f"scarcity {ctx['scarcity']:.2f}). "
-        f"Best bid {ctx['best_bid']}, best ask {ctx['best_ask']}. "
-        f"You hold {ctx['my_inventory']} units and ${ctx['my_cash']:.2f} cash; "
-        f"food left: {ctx['ticks_of_food_left']} tick(s). "
-        f"What is your order?\n"
-        f"CONTEXT: {json.dumps(ctx)}"
+        f"t{ctx['tick']} p${p:.2f} fv${fv:.2f} mom{mom:+.1f}% "
+        f"bid={bid} ask={ask} inv={inv} cash=${cash:.0f} food={food}\n"
+        f"CONTEXT:{json.dumps(ctx)}"
     )
     return system, human
 

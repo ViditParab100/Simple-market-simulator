@@ -80,6 +80,19 @@ class PanicAgent(Agent):
             return f"Had to grab {qty} @ ${price:.2f} — can't risk running out!"
         return f"Get me out! Dumped {qty} @ ${price:.2f}, take it, take it!"
 
+    def auction_bid(self, lot, current_price, round_num, state):
+        base = super().auction_bid(lot, current_price, round_num, state)
+        if base is not None:
+            return base
+        if self.cash < current_price * lot.quantity:
+            return None
+        if self._state != "calm":
+            return None  # recovering after a dump — sit out
+        # Calm: participate only when low on inventory (small premium to secure supply)
+        if self.inventory < 5:
+            return round(lot.market_price * 1.02, 2)
+        return None
+
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         if self._state != "calm" or self.inventory <= 0:
             return None

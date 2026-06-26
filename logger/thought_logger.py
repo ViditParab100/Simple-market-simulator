@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 from rich.console import Console
+from rich.markup import escape as _esc
 from rich.table import Table
 from rich.panel import Panel
 from rich.rule import Rule
@@ -41,7 +42,7 @@ class ThoughtLogger:
         if not self.verbose:
             return
 
-        thought_lines = "\n".join(f"  [dim]>[/dim] {t}" for t in thoughts)
+        thought_lines = "\n".join(f"  [dim]>[/dim] {_esc(t)}" for t in thoughts)
 
         if orders:
             order_lines = []
@@ -160,6 +161,45 @@ class ThoughtLogger:
             table.add_row(*row)
 
         console.print(table)
+
+    def log_auction(self, tick: int, result) -> None:
+        """Display the English auction round-by-round and final outcome."""
+        lot = result.lot
+        console.print(
+            f"\n[bold yellow]** AUCTION[/bold yellow]  "
+            f"[yellow]{lot.seller_id} offers {lot.quantity} units -- "
+            f"clock starts at [bold]${lot.starting_price:.2f}[/bold] "
+            f"(market ${lot.market_price:.2f})[/yellow]"
+        )
+        if self.verbose:
+            for rnd in result.history:
+                staying_str = ", ".join(rnd.staying) or "-"
+                dropped_str = ", ".join(rnd.dropped_out)
+                drop_part   = (f"  [dim red]out: {dropped_str}[/dim red]"
+                               if dropped_str else "")
+                console.print(
+                    f"  Round {rnd.round_num + 1:>2}  [dim]${rnd.price:.2f}[/dim]  "
+                    f"[green]{staying_str}[/green]{drop_part}"
+                )
+        if result.sold:
+            console.print(
+                f"  [bold green]SOLD[/bold green] -> "
+                f"[cyan]{result.winner_id}[/cyan] wins {lot.quantity} units "
+                f"@ [bold green]${result.winning_price:.2f}[/bold green] "
+                f"after {result.rounds_run} round(s)"
+            )
+        else:
+            last_round = result.history[-1] if result.history else None
+            if last_round and not last_round.staying:
+                reason = "no bidders"
+            elif last_round and last_round.price < lot.reserve_price:
+                reason = f"reserve ${lot.reserve_price:.2f} not met"
+            else:
+                reason = "all bidders passed"
+            console.print(
+                f"  [bold red]NO SALE[/bold red] -- "
+                f"{reason} after {result.rounds_run} round(s)"
+            )
 
     def log_scenario_event(self, tick: int, description: str):
         console.print(

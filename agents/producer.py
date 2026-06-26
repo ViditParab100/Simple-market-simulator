@@ -106,5 +106,8 @@ class ProducerAgent(Agent):
         # The producer is a net supplier — it never panic-buys.
         return None
 
+    def auction_bid(self, lot, current_price, round_num, state):
+        return None  # seller never bids in its own auction
+
     def trade_remark(self, role: str, price: float, qty: int) -> str:
         return f"Shipped {qty} units at my ${price:.2f} cost-plus price. Supply keeps flowing."

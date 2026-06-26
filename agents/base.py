@@ -3,6 +3,10 @@ import math
 from abc import ABC, abstractmethod
 from market.models import Order, OrderSide, MarketState, Trade
 from market.haggle import HaggleIntent
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from market.auction import AuctionLot
 
 _DEFAULT_PRICE = 20.0
 
@@ -59,6 +63,27 @@ class Agent(ABC):
         Return a pre-tick negotiation intent, or None to skip haggling.
         Override in each subclass to express archetype-specific thresholds.
         """
+        return None
+
+    def auction_bid(
+        self,
+        lot: "AuctionLot",
+        current_price: float,
+        round_num: int,
+        state: MarketState,
+    ) -> float | None:
+        """
+        Return the maximum price-per-unit this agent is willing to pay for the
+        auction lot at this round, or None to drop out permanently.
+
+        Base behaviour: drop out if the lot is unaffordable; otherwise submit a
+        survival bid (15 % above market) when starvation is imminent.
+        Subclasses call super() first and layer strategy on top.
+        """
+        if self.cash < current_price * lot.quantity:
+            return None
+        if self.consumption_rate > 0 and self.runway() < self.survival_threshold:
+            return round(lot.market_price * 1.15, 2)
         return None
 
     # ── Consumption / survival ─────────────────────────────────────────────

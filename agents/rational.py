@@ -88,6 +88,19 @@ class RationalAgent(Agent):
             return f"${price:.2f} is below fair value — picking up {qty}. Patience pays."
         return f"${price:.2f} is above fair value — trimming {qty}. Discipline."
 
+    def auction_bid(self, lot, current_price, round_num, state):
+        base = super().auction_bid(lot, current_price, round_num, state)
+        if base is not None:
+            return base
+        if self.cash < current_price * lot.quantity:
+            return None
+        fv = self._fair_value(state)
+        if fv is None:
+            return None  # no history yet
+        # Only bid when the lot is starting at a discount to fair value.
+        # Drop out once the clock price exceeds fair value + margin.
+        return round(fv * (1 + self.margin), 2)
+
     def haggle_intent(self, state: MarketState) -> HaggleIntent | None:
         fv = self._fair_value(state)
         if fv is None:
